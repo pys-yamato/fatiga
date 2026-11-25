@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reportes Antifatiga CHEC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: panel de control fijo a la izquierda + hojas de reporte (A4 apaisado) a la derecha */
+:root{
+  --bg:#EEF1F7; --panel:#FFFFFF; --ink:#18202E; --muted:#5E6779; --line:#D9DEE8;
+  --accent:#1F3E9C; --accent-2:#2D55C8; --accent-soft:#E3E9F8;
+  --ok:#2E7D32; --warn:#B26A00; --crit:#C62828;
+  --font-display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --font-body:"Barlow",Arial,Helvetica,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151E; --panel:#1A202C; --ink:#E7EBF3; --muted:#9AA3B5; --line:#2C3445;
+    --accent:#6E8EF0; --accent-2:#8EA7F4; --accent-soft:#232C44; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151E; --panel:#1A202C; --ink:#E7EBF3; --muted:#9AA3B5; --line:#2C3445;
+  --accent:#6E8EF0; --accent-2:#8EA7F4; --accent-soft:#232C44; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px}
+button,input,select{font:inherit}
+.app{display:grid;grid-template-columns:330px 1fr;gap:20px;padding:20px;align-items:start;max-width:1560px;margin:0 auto}
+@media (max-width:980px){.app{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:18px;position:sticky;top:20px}
+@media (max-width:980px){.panel{position:static}}
+.brand{display:flex;gap:12px;align-items:center}
+.brand img{height:34px;background:#fff;border-radius:6px;padding:3px 6px}
+.brand h1{font-family:var(--font-display);font-size:21px;line-height:1.1;margin:0;text-wrap:balance}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.step{display:flex;flex-direction:column;gap:8px}
+.step>label,.step>.lbl{font-weight:600;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;cursor:pointer;color:var(--muted);font-size:14px;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.drop strong{color:var(--accent)}
+.status{font-size:13px;line-height:1.4;padding:8px 10px;border-radius:8px;background:var(--accent-soft)}
+.status.sample{background:#FFF4D6;color:#6B4E00}
+.status.err{background:#FDE7E7;color:var(--crit)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button{border:1px solid var(--line);background:transparent;color:var(--ink);padding:9px 8px;border-radius:8px;cursor:pointer;font-weight:600;text-align:left;line-height:1.2}
+.seg button small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg button[aria-pressed="true"] small{color:#DCE3F8}
+.seg button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+.row{display:flex;gap:6px;align-items:center}
+.row input{flex:1;min-width:0}
+input[type=date],input[type=text]{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 10px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--accent);border-radius:8px;padding:8px 12px;cursor:pointer;font-weight:600}
+.btn:hover{background:var(--accent-soft)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);padding:11px 14px;width:100%}
+.btn.primary:hover{background:var(--accent-2)}
+.btn[disabled]{opacity:.55;cursor:progress}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.4}
+.rol{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px}
+.rol b{font-family:var(--font-display);font-size:15px}
+.chip{display:inline-block;min-width:22px;text-align:center;border-radius:5px;padding:1px 6px;font-weight:700;color:#fff}
+.gA{background:#1F3E9C}.gB{background:#0F8B8D}.gC{background:#8E44AD}
+.hidden{display:none!important}
+.exports{display:flex;flex-direction:column;gap:8px}
+.exports .row .btn{flex:1}
+.out{min-width:0;display:flex;flex-direction:column;gap:20px;overflow-x:auto}
+
+/* ---------- Hoja de reporte: siempre papel blanco (sirve igual en pantalla y en PDF) ---------- */
+.sheet{background:#fff;color:#18202E;width:1120px;min-height:792px;margin:0 auto;padding:30px 34px;border-radius:4px;box-shadow:0 1px 3px rgba(20,30,60,.12),0 8px 24px rgba(20,30,60,.08);font-family:var(--font-body);font-size:13px;display:flex;flex-direction:column;gap:16px;color-scheme:light}
+.sh-head{display:flex;align-items:stretch;gap:0;border:1.5px solid #1F3E9C;border-radius:6px;overflow:hidden}
+.sh-head .logo{background:#fff;display:flex;align-items:center;padding:6px 14px;border-right:1.5px solid #1F3E9C}
+.sh-head .logo img{height:42px}
+.sh-head .t{flex:1;background:#1F3E9C;color:#fff;padding:8px 16px 8px 10px;display:flex;align-items:center;justify-content:flex-start;gap:18px}
+.sh-head .t h2{font-family:var(--font-display);font-size:23px;margin:0;letter-spacing:.01em}
+.sh-head .t p{margin:2px 0 0;color:#D5DEF7;font-size:13px}
+.sh-head .meta{background:#fff;padding:8px 14px;font-size:11.5px;color:#5E6779;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:170px;border-left:1.5px solid #1F3E9C}
+.sh-head .meta b{color:#18202E}
+.kpis{display:grid;grid-template-columns:repeat(var(--n,6),1fr);gap:10px}
+.kpi{border:1px solid #D9DEE8;border-left:4px solid var(--k,#1F3E9C);border-radius:8px;padding:10px 12px}
+.kpi span{display:block;font-size:11.5px;color:#5E6779;font-weight:600;text-transform:uppercase;line-height:1.25}
+.kpi b{display:block;font-family:var(--font-display);font-size:30px;line-height:1.1;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi i{font-style:normal;font-size:11.5px;color:#5E6779}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+.box{border:1px solid #E1E5EE;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.box h3{margin:0;font-family:var(--font-display);font-size:16px;color:#1F3E9C}
+.box .sub{font-size:11.5px;color:#5E6779;margin-top:-4px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:#3B4456}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+svg text{font-family:var(--font-body)}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+table.t th{background:#1F3E9C;color:#fff;font-weight:600;padding:6px 6px;text-align:center;line-height:1.15}
+table.t td{border-bottom:1px solid #E6E9F0;padding:5px 6px;text-align:center;vertical-align:middle}
+table.t td.l,table.t th.l{text-align:left}
+table.t tr:nth-child(even) td{background:#F7F9FC}
+table.t tr.crit td{background:#FCE8E8}
+.pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
+.nota{font-size:11.5px;color:#5E6779}
+.empty{padding:40px;text-align:center;color:#5E6779;border:1px dashed #D9DEE8;border-radius:8px}
+.tcards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.tcard{border:1px solid #D9DEE8;border-left:5px solid var(--k);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;min-height:74px}
+.tcard span{font-size:11.5px;font-weight:600;color:#3B4456;line-height:1.2}
+.tcard b{font-family:var(--font-display);font-size:30px;line-height:1.05;margin-top:auto;font-variant-numeric:tabular-nums}
+.tcard i{font-style:normal;font-size:10.5px;color:#7A8396}
+.tcard.zero{opacity:.45}
+.tcards.compact .tcard{min-height:58px;padding:6px 9px}.tcards.compact .tcard b{font-size:24px}
+.resumen{font-size:12.5px;color:#3B4456;background:#F3F5FB;border-radius:6px;padding:7px 12px;line-height:1.6}
+.resumen .sep{color:#B5BCCB;margin:0 8px}
+.sh-head .fcard{background:#fff;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px 18px;min-width:160px;text-align:center;flex:none}
+.sh-head .fcard span{font-size:11px;font-weight:700;letter-spacing:.08em;color:#5E6779}
+.sh-head .fcard b{font-family:var(--font-display);font-size:34px;line-height:1;color:#1F3E9C;white-space:nowrap}
+.sh-head .fcard i{font-style:normal;font-size:11.5px;font-weight:700;color:#D64545;letter-spacing:.04em}
+.sh-head .meta .tot{margin-top:2px;color:#18202E}
+.sheet.pres{width:1500px;height:1060px;gap:12px;overflow:hidden;padding:26px 30px}
+.sheet.pres .tcards{grid-template-columns:repeat(10,1fr);gap:6px}
+.sheet.pres .tcard{min-height:62px;padding:6px 8px}.sheet.pres .tcard span{font-size:11px}.sheet.pres .tcard b{font-size:24px}
+.nota-data{font-size:11.5px;color:#7A5200;background:#FFF6DE;border-left:3px solid #F0A04B;padding:5px 10px;border-radius:4px;margin-top:-4px}
+.sheet table.t tr.grp td{background:#EEF2FB!important;font-weight:700;color:#1F3E9C;padding:5px 6px}
+.turno-tit{font-weight:700;font-size:12.5px;color:#1F3E9C;margin-top:4px;border-bottom:1px solid #E1E5EE;padding-bottom:2px}
+.pres-wrap{margin:0 auto;overflow:visible}
+.pres-wrap .sheet.pres{margin:0}
+.pres-r1{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.pres-r2{display:grid;grid-template-columns:1fr 2fr;gap:14px;flex:1;min-height:0}
+.sheet.pres .box{padding:10px 12px}
+.acc-cols{display:grid;gap:12px;align-items:start}
+.acc-g{font-weight:700;color:#1F3E9C;font-size:12.5px;background:#EEF2FB;border-radius:5px;padding:4px 8px;margin-bottom:4px}.prot b.al{font-weight:600;color:#18202E}
+.acc-g .cnt{color:#7A8396;font-weight:400}
+.prot table.t{font-size:10.5px}.prot table.t td{padding:3px 5px}.prot table.t tr.op td{background:#F5F7FC;padding-top:5px;border-top:1px solid #D5DCEC}
+.sheet.pres .box.prot{min-height:0;overflow:hidden}.sheet.pres .acc-cols{flex:1;min-height:0;align-items:stretch}.sheet.pres .acc-col{min-height:0;overflow:hidden}
+.sheet.pres table.t{font-size:11px}.sheet.pres table.t td{padding:4px 6px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
+.acc-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
+.acc{border:1px solid #E1E5EE;border-top:4px solid var(--k);border-radius:6px;padding:7px 8px;display:flex;flex-direction:column;gap:1px}
+.acc b{font-family:var(--font-display);font-size:24px;line-height:1.05;color:#18202E;font-variant-numeric:tabular-nums}
+.acc b small{font-size:14px;color:#7A8396}
+.acc span{font-size:11px;font-weight:700;color:#3B4456;line-height:1.2}
+.acc i{font-style:normal;font-size:10px;color:#7A8396;line-height:1.2}
+.foot{margin-top:auto;display:flex;justify-content:space-between;font-size:10.5px;color:#8A92A3;border-top:1px solid #E6E9F0;padding-top:6px}
+.bar-cell{display:flex;align-items:center;gap:6px}
+.bar-cell span{display:inline-block;height:9px;background:#1F3E9C;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel" aria-label="Controles del reporte">
+    <div class="brand">
+      <img id="logoImg" alt="CHEC">
+      <div><h1>Reportes del sistema antifatiga</h1><p>E-Mine · Control de Fatiga y Somnolencia</p></div>
+    </div>
+
+    <div class="step">
+      <span class="lbl">1 · Base de datos</span>
+      <label class="drop" id="drop" for="file"><strong>Cargar BD_Alertas (.xlsx)</strong><br>o arrastra el archivo aquí</label>
+      <input type="file" id="file" accept=".xlsx,.xlsm,.xls" class="hidden">
+      <div class="status sample" id="status">Mostrando datos de ejemplo. Carga tu Excel para ver los reales; se procesa solo en tu navegador.</div>
+    </div>
+
+    <div class="step">
+      <span class="lbl">2 · Reporte</span>
+      <div class="seg" id="tipos" role="group" aria-label="Tipo de reporte">
+        <button type="button" data-t="guardia" aria-pressed="true">Día completo<small>07:00 a 07:00</small></button>
+        <button type="button" data-t="dia" aria-pressed="false">Turno Día<small>07:00 a 19:00</small></button>
+        <button type="button" data-t="noche" aria-pressed="false">Turno Noche<small>19:00 a 07:00</small></button>
+        <button type="button" data-t="semanal" aria-pressed="false">Semanal<small>mié 07:00 a mié</small></button>
+        <button type="button" data-t="mensual" aria-pressed="false">Mensual<small>mes calendario</small></button>
+        <button type="button" data-t="operador" aria-pressed="false">Por operador<small>historial en un rango</small></button>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="lbl">Vista</span>
+      <div class="seg" id="vistas" role="group" aria-label="Vista">
+        <button type="button" data-v="pres" aria-pressed="true">Presentación<small>1 hoja: tarjetas y gráficos</small></button>
+        <button type="button" data-v="det" aria-pressed="false">Detallado<small>completo, para correo</small></button>
+      </div>
+    </div>
+
+    <div class="step" id="pFecha">
+      <label for="fecha" id="lblFecha">3 · Fecha de guardia</label>
+      <div class="row">
+        <button type="button" class="btn" id="prev" aria-label="Anterior">◀</button>
+        <input type="date" id="fecha">
+        <button type="button" class="btn" id="next" aria-label="Siguiente">▶</button>
+      </div>
+      <div class="hint" id="fechaInfo"></div>
+      <div class="rol" id="rolBox"></div>
+    </div>
+
+    <div class="step hidden" id="pOper">
+      <label for="oper">3 · Operador</label>
+      <input type="text" id="oper" list="opList" placeholder="Escribe nombre o camión (ej. B04, DT-004)" autocomplete="off">
+      <datalist id="opList"></datalist>
+      <div class="row">
+        <input type="date" id="desde" aria-label="Desde">
+        <input type="date" id="hasta" aria-label="Hasta">
+      </div>
+      <div class="hint">Rango por fecha de guardia.</div>
+    </div>
+
+    <div class="step exports">
+      <span class="lbl">4 · Descargar</span>
+      <button type="button" class="btn primary" id="pdfBtn">Descargar PDF</button>
+      <div class="row"><button type="button" class="btn" id="htmlBtn">Descargar HTML</button><button type="button" class="btn" id="csvBtn">Datos (CSV)</button></div>
+      <div class="hint" id="expMsg">El PDF sale en A4 horizontal, una hoja por sección.</div>
+    </div>
+  </aside>
+
+  <main class="out" id="out" aria-live="polite"></main>
+</div>
+
+<script>
+const SAMPLE = {"bd": [["N.°", "Fecha (calendario)", "Turno (auto)", "Hora de alerta", "Equipo", "Guardia (auto, rol 14x7)", "Operador (auto)", "Operador reemplazo (solo si aplica)", "Tipo de alerta (E-Mine)", "Nivel (auto)", "Hora de comunicación", "Comunicado a (auto)", "Hora de respuesta", "Acción adoptada (elegir de la lista)", "Asistente", "Observaciones", "Fecha de guardia", "Semana (inicia miércoles 07:00)", "Hora (0-23)", "Min. hasta comunicación", "Comunicó ≤ 2 min", "aux", "Reporte de fatiga N° (en el turno)", "Reportes de fatiga acumulados (60 días)", "Seguimiento 30 min (Sí/No)", "Pausa activa (Voluntaria/Obligatoria)", "Tiempo detenido (min)"], [null, 46330.0, null, 0.398611, "DT-018", null, null, null, "Bostezo frecuente", null, 0.399306, null, 0.402778, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 12], [null, 46330.0, null, 0.418056, "DT-042", null, null, null, "Cámara obstruida", null, 0.41875, null, 0.421528, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46330.0, null, 0.65625, "DT-025", null, null, null, "Conducción con fatiga", null, 0.656944, null, 0.660417, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 25], [null, 46330.0, null, 0.736111, "DT-020", null, null, null, "Conductor no detectado", null, 0.736458, null, 0.739931, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46330.0, null, 0.854861, "DT-046", null, null, null, "Bostezo", null, 0.855208, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46331.0, null, 0.043056, "DT-020", null, null, null, "Cámara obstruida", null, 0.04375, null, 0.047222, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46331.0, null, 0.051389, "DT-005", null, null, null, "Sin uso de cinturón de seguridad", null, 0.052257, null, 0.052951, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46331.0, null, 0.086111, "DT-064", null, null, null, "Conducción con fatiga", null, 0.086806, null, 0.088889, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 12], [null, 46331.0, null, 0.099306, "DT-005", null, null, null, "Conducción con fatiga", null, 0.100463, null, 0.101852, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 17], [null, 46331.0, null, 0.100694, "DT-035", null, null, null, "Bostezo", null, 0.103704, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46331.0, null, 0.244444, "DT-040", null, null, null, "Uso de celular", null, 0.246759, null, 0.248843, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46331.0, null, 0.269444, "DT-064", null, null, null, "Distracción", null, 0.270602, null, 0.274074, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46331.0, null, 0.297917, "DT-024", null, null, null, "Bostezo frecuente", null, 0.299653, null, 0.303125, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46331.0, null, 0.370833, "DT-005", null, null, null, "Uso de celular", null, 0.373148, null, 0.375926, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46331.0, null, 0.436111, "DT-008", null, null, null, "Bostezo", null, 0.436979, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46331.0, null, 0.48125, "DT-012", null, null, null, "Distracción", null, 0.482639, null, 0.484028, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46331.0, null, 0.620139, "DT-005", null, null, "OPERADOR C19", "Distracción", null, 0.621007, null, 0.624479, "Retroalimentación al operador (O1/O2)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46331.0, null, 0.667361, "DT-020", null, null, null, "Conductor no detectado", null, 0.668056, null, 0.669444, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46331.0, null, 0.74375, "DT-042", null, null, null, "Uso de celular", null, 0.746759, null, 0.749537, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46331.0, null, 0.870139, "DT-045", null, null, null, "Distracción", null, 0.870833, null, 0.873611, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.003472, "DT-056", null, null, null, "Distracción", null, 0.005208, null, 0.007986, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.009028, "DT-065", null, null, null, "Conducción con fatiga", null, 0.011343, null, 0.014815, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46332.0, null, 0.074306, "DT-025", null, null, null, "Distracción", null, 0.075347, null, 0.076736, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.276389, "DT-061", null, null, null, "Bostezo", null, 0.277778, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46332.0, null, 0.377083, "DT-034", null, null, null, "Sin uso de cinturón de seguridad", null, 0.378472, null, 0.38125, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46332.0, null, 0.39375, "DT-020", null, null, "OPERADOR A38", "Sin uso de cinturón de seguridad", null, 0.394792, null, 0.396181, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46332.0, null, 0.397917, "DT-065", null, null, null, "Bostezo", null, 0.400926, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46332.0, null, 0.402083, "DT-035", null, null, null, "Fumar en cabina", null, 0.404398, null, 0.408565, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.698611, "DT-023", null, null, null, "Bostezo", null, 0.699306, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46332.0, null, 0.893056, "DT-026", null, null, null, "Distracción", null, 0.89375, null, 0.896528, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.90625, "DT-004", null, null, null, "Distracción", null, 0.907639, null, 0.909028, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46332.0, null, 0.959722, "DT-008", null, null, null, "Bostezo", null, 0.960417, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46333.0, null, 0.105556, "DT-065", null, null, null, "Sin uso de cinturón de seguridad", null, 0.108565, null, 0.111343, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46333.0, null, 0.338194, "DT-004", null, null, null, "Sin uso de cinturón de seguridad", null, 0.339236, null, 0.339931, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46333.0, null, 0.353472, "DT-065", null, null, null, "Bostezo", null, 0.353819, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46333.0, null, 0.386111, "DT-031", null, null, null, "Conductor no detectado", null, 0.386458, null, 0.387847, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46333.0, null, 0.404167, "DT-051", null, null, null, "Cámara obstruida", null, 0.405208, null, 0.406597, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46333.0, null, 0.457639, "DT-065", null, null, null, "Sin uso de cinturón de seguridad", null, 0.459954, null, 0.460648, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46333.0, null, 0.579167, "DT-035", null, null, null, "Distracción", null, 0.580324, null, 0.583102, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46333.0, null, 0.715972, "DT-038", null, null, null, "Uso de celular", null, 0.71713, null, 0.719213, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46333.0, null, 0.757639, "DT-004", null, null, null, "Bostezo", null, 0.759375, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46333.0, null, 0.765972, "DT-005", null, null, null, "Bostezo frecuente", null, 0.766319, null, 0.768403, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 9], [null, 46333.0, null, 0.794444, "DT-007", null, null, null, "Distracción", null, 0.795602, null, 0.79838, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46333.0, null, 0.988889, "DT-051", null, null, null, "Conductor no detectado", null, 0.989931, null, 0.991319, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.095139, "DT-005", null, null, null, "Bostezo frecuente", null, 0.098148, null, 0.102315, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46334.0, null, 0.138889, "DT-005", null, null, null, "Conductor no detectado", null, 0.139931, null, 0.140625, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.168056, "DT-020", null, null, null, "Bostezo", null, 0.169792, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46334.0, null, 0.2625, "DT-037", null, null, null, "Conducción con fatiga reiterada", null, 0.262847, null, 0.265625, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 30], [null, 46334.0, null, 0.284722, "DT-020", null, null, null, "Uso de celular", null, 0.286458, null, 0.288542, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46334.0, null, 0.327778, "DT-065", null, null, "OPERADOR A47", "Sin uso de cinturón de seguridad", null, 0.328819, null, 0.329514, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46334.0, null, 0.365972, "DT-012", null, null, null, "Distracción", null, 0.368287, null, 0.37037, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.389583, "DT-065", null, null, null, "Bostezo", null, 0.390741, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46334.0, null, 0.550694, "DT-035", null, null, null, "Conductor no detectado", null, 0.551736, null, 0.552431, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.633333, "DT-016", null, null, null, "Conductor no detectado", null, 0.634491, null, 0.635185, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.7125, "DT-063", null, null, null, "Bostezo frecuente", null, 0.713542, null, 0.717708, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 11], [null, 46334.0, null, 0.728472, "DT-027", null, null, null, "Bostezo frecuente", null, 0.730787, null, 0.733565, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 11], [null, 46334.0, null, 0.731944, "DT-007", null, null, null, "Distracción", null, 0.732986, null, 0.735764, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46334.0, null, 0.789583, "DT-019", null, null, null, "Bostezo", null, 0.792593, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46335.0, null, 0.046528, "DT-005", null, null, "OPERADOR B33", "Distracción", null, 0.047569, null, 0.051736, "Retroalimentación al operador (O1/O2)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.054861, "DT-035", null, null, null, "Sin uso de cinturón de seguridad", null, 0.055729, null, 0.058507, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46335.0, null, 0.063889, "DT-032", null, null, null, "Conductor no detectado", null, 0.065278, null, 0.066667, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.075, "DT-020", null, null, null, "Bostezo frecuente", null, 0.076157, null, 0.076852, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 6], [null, 46335.0, null, 0.149306, "DT-053", null, null, null, "Cámara obstruida", null, 0.150347, null, 0.154514, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.265972, "DT-004", null, null, null, "Fumar en cabina", null, 0.267014, null, 0.269792, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.389583, "DT-065", null, null, null, "Bostezo frecuente", null, 0.392593, null, 0.393287, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 8], [null, 46335.0, null, 0.429861, "DT-034", null, null, null, "Uso de celular", null, 0.432176, null, 0.435648, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46335.0, null, 0.505556, "DT-064", null, null, null, "Bostezo frecuente", null, 0.508565, null, 0.512037, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 12], [null, 46335.0, null, 0.558333, "DT-003", null, null, null, "Distracción", null, 0.560069, null, 0.564236, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.583333, "DT-035", null, null, null, "Conductor no detectado", null, 0.584028, null, 0.586806, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46335.0, null, 0.607639, "DT-065", null, null, null, "Sin uso de cinturón de seguridad", null, 0.608681, null, 0.611458, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46335.0, null, 0.630556, "DT-037", null, null, null, "Uso de celular", null, 0.631424, null, 0.634201, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46335.0, null, 0.727778, "DT-065", null, null, null, "Conducción con fatiga reiterada", null, 0.729514, null, 0.731597, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 34], [null, 46335.0, null, 0.820139, "DT-030", null, null, null, "Conducción con fatiga", null, 0.821296, null, 0.822685, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 23], [null, 46335.0, null, 0.938194, "DT-004", null, null, null, "Bostezo", null, 0.939931, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46336.0, null, 0.028472, "DT-035", null, null, null, "Bostezo", null, 0.029514, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46336.0, null, 0.150694, "DT-013", null, null, null, "Bostezo", null, 0.151736, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46336.0, null, 0.154861, "DT-029", null, null, null, "Bostezo", null, 0.155556, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46336.0, null, 0.426389, "DT-040", null, null, null, "Distracción", null, 0.428704, null, 0.430093, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46336.0, null, 0.494444, "DT-027", null, null, null, "Conducción con fatiga reiterada", null, 0.496181, null, 0.496875, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 41], [null, 46336.0, null, 0.508333, "DT-020", null, null, null, "Conductor no detectado", null, 0.509201, null, 0.513368, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46336.0, null, 0.519444, "DT-053", null, null, "OPERADOR C11", "Fumar en cabina", null, 0.520312, null, 0.521007, "Retroalimentación al operador (O1/O2)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46336.0, null, 0.529861, "DT-005", null, null, "OPERADOR C65", "Distracción", null, 0.531597, null, 0.532986, "Retroalimentación al operador (O1/O2)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46336.0, null, 0.601389, "DT-024", null, null, null, "Cámara obstruida", null, 0.601736, null, 0.605208, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46336.0, null, 0.752083, "DT-026", null, null, null, "Uso de celular", null, 0.752951, null, 0.755729, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46336.0, null, 0.802778, "DT-035", null, null, null, "Bostezo", null, 0.803819, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46336.0, null, 0.893056, "DT-058", null, null, null, "Bostezo", null, 0.89537, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46337.0, null, 0.075, "DT-011", null, null, null, "Conducción con fatiga", null, 0.075868, null, 0.077257, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 11], [null, 46337.0, null, 0.080556, "DT-042", null, null, null, "Bostezo", null, 0.08125, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46337.0, null, 0.117361, "DT-014", null, null, null, "Conducción con fatiga", null, 0.119097, null, 0.121181, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 25], [null, 46337.0, null, 0.263194, "DT-024", null, null, null, "Bostezo", null, 0.264062, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46337.0, null, 0.280556, "DT-042", null, null, null, "Bostezo", null, 0.281944, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46337.0, null, 0.289583, "DT-025", null, null, null, "Bostezo frecuente", null, 0.291898, null, 0.292593, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 7], [null, 46337.0, null, 0.507639, "DT-005", null, null, null, "Uso de celular", null, 0.508796, null, 0.509491, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46337.0, null, 0.514583, "DT-045", null, null, null, "Bostezo", null, 0.515451, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46337.0, null, 0.522222, "DT-065", null, null, null, "Conductor no detectado", null, 0.52309, null, 0.525868, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46337.0, null, 0.552778, "DT-065", null, null, null, "Conducción con fatiga", null, 0.553819, null, 0.557292, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 13], [null, 46337.0, null, 0.622222, "DT-005", null, null, null, "Bostezo", null, 0.623264, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46337.0, null, 0.761111, "DT-004", null, null, null, "Conducción con fatiga", null, 0.762153, null, 0.764931, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 17], [null, 46337.0, null, 0.897917, "DT-019", null, null, null, "Bostezo frecuente", null, 0.898785, null, 0.899479, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 9], [null, 46337.0, null, 0.94375, "DT-021", null, null, null, "Uso de celular", null, 0.945486, null, 0.948958, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46338.0, null, 0.020139, "DT-020", null, null, "OPERADOR A51", "Bostezo frecuente", null, 0.021007, null, 0.022396, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 6], [null, 46338.0, null, 0.073611, "DT-005", null, null, null, "Uso de celular", null, 0.075347, null, 0.076736, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46338.0, null, 0.097222, "DT-042", null, null, null, "Conductor no detectado", null, 0.097569, null, 0.101042, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.221528, "DT-053", null, null, null, "Conductor no detectado", null, 0.223264, null, 0.223958, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.232639, "DT-020", null, null, null, "Distracción", null, 0.233507, null, 0.237674, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.391667, "DT-053", null, null, null, "Conductor no detectado", null, 0.393056, null, 0.39375, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.504861, "DT-005", null, null, null, "Distracción", null, 0.506597, null, 0.510069, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.595833, "DT-015", null, null, null, "Bostezo", null, 0.596701, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46338.0, null, 0.605556, "DT-053", null, null, null, "Conducción con fatiga", null, 0.608565, null, 0.612731, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 14], [null, 46338.0, null, 0.628472, "DT-041", null, null, null, "Distracción", null, 0.628819, null, 0.632292, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46338.0, null, 0.678472, "DT-021", null, null, null, "Conducción con fatiga", null, 0.680787, null, 0.682176, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 16], [null, 46338.0, null, 0.700694, "DT-060", null, null, null, "Bostezo frecuente", null, 0.703009, null, 0.704398, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 9], [null, 46338.0, null, 0.724306, "DT-065", null, null, null, "Uso de celular", null, 0.72662, null, 0.730093, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46338.0, null, 0.8, "DT-031", null, null, null, "Bostezo frecuente", null, 0.800868, null, 0.803646, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 8], [null, 46338.0, null, 0.816667, "DT-006", null, null, null, "Bostezo", null, 0.818056, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46338.0, null, 0.985417, "DT-042", null, null, null, "Bostezo", null, 0.987153, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46339.0, null, 0.011111, "DT-051", null, null, null, "Distracción", null, 0.012847, null, 0.014931, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.127083, "DT-004", null, null, null, "Bostezo", null, 0.128472, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46339.0, null, 0.252083, "DT-065", null, null, null, "Bostezo", null, 0.253241, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46339.0, null, 0.296528, "DT-034", null, null, null, "Bostezo frecuente", null, 0.297917, null, 0.302083, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 12], [null, 46339.0, null, 0.377083, "DT-052", null, null, null, "Bostezo", null, 0.377778, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46339.0, null, 0.397222, "DT-053", null, null, null, "Fumar en cabina", null, 0.39838, null, 0.399074, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.475694, "DT-026", null, null, null, "Cámara obstruida", null, 0.476852, null, 0.477546, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.636111, "DT-053", null, null, null, "Distracción", null, 0.637269, null, 0.641435, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.656944, "DT-057", null, null, null, "Distracción", null, 0.659259, null, 0.660648, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.703472, "DT-026", null, null, null, "Bostezo", null, 0.705787, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46339.0, null, 0.790278, "DT-049", null, null, null, "Cámara obstruida", null, 0.792593, null, 0.793287, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46339.0, null, 0.890278, "DT-020", null, null, "OPERADOR A18", "Bostezo", null, 0.891146, null, null, "Contacto radial – continúa operando", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46339.0, null, 0.925694, "DT-050", null, null, "OPERADOR A37", "Bostezo", null, 0.926389, null, null, "Contacto radial – continúa operando", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46339.0, null, 0.993056, "DT-065", null, null, null, "Conducción con fatiga", null, 0.994097, null, 0.996875, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 15], [null, 46340.0, null, 0.01875, "DT-027", null, null, null, "Bostezo", null, 0.019907, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46340.0, null, 0.199306, "DT-035", null, null, "OPERADOR A45", "Distracción", null, 0.199653, null, 0.202431, "Retroalimentación al operador (O1/O2)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46340.0, null, 0.2, "DT-042", null, null, null, "Bostezo", null, 0.201389, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46340.0, null, 0.248611, "DT-049", null, null, null, "Fumar en cabina", null, 0.25162, null, 0.254398, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46340.0, null, 0.258333, "DT-004", null, null, null, "Fumar en cabina", null, 0.259201, null, 0.263368, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46340.0, null, 0.361111, "DT-065", null, null, null, "Uso de celular", null, 0.361806, null, 0.364583, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46340.0, null, 0.389583, "DT-033", null, null, null, "Sin uso de cinturón de seguridad", null, 0.391898, null, 0.396065, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46340.0, null, 0.396528, "DT-020", null, null, null, "Uso de celular", null, 0.397917, null, 0.401389, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46340.0, null, 0.448611, "DT-026", null, null, null, "Distracción", null, 0.45, null, 0.453472, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46340.0, null, 0.465278, "DT-020", null, null, null, "Sin uso de cinturón de seguridad", null, 0.467014, null, 0.467708, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46340.0, null, 0.522917, "DT-005", null, null, null, "Conducción con fatiga", null, 0.523785, null, 0.526563, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 20], [null, 46340.0, null, 0.58125, "DT-020", null, null, null, "Uso de celular", null, 0.581944, null, 0.584722, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46340.0, null, 0.631944, "DT-053", null, null, null, "Cámara obstruida", null, 0.633681, null, 0.637847, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46340.0, null, 0.951389, "DT-020", null, null, null, "Fumar en cabina", null, 0.953125, null, 0.957292, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46341.0, null, 0.152778, "DT-053", null, null, "OPERADOR C52", "Sin uso de cinturón de seguridad", null, 0.153935, null, 0.156713, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46341.0, null, 0.2125, "DT-020", null, null, null, "Bostezo", null, 0.213542, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46341.0, null, 0.240278, "DT-054", null, null, null, "Distracción", null, 0.241319, null, 0.245486, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46341.0, null, 0.248611, "DT-004", null, null, null, "Bostezo", null, 0.249306, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46341.0, null, 0.291667, "DT-004", null, null, null, "Conducción con fatiga reiterada", null, 0.292361, null, 0.295139, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 48], [null, 46341.0, null, 0.564583, "DT-003", null, null, null, "Distracción", null, 0.565451, null, 0.569618, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46341.0, null, 0.564583, "DT-065", null, null, null, "Bostezo frecuente", null, 0.565625, null, 0.568403, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 7], [null, 46341.0, null, 0.634028, "DT-014", null, null, null, "Bostezo", null, 0.634896, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46341.0, null, 0.656944, "DT-025", null, null, null, "Uso de celular", null, 0.657986, null, 0.659375, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46341.0, null, 0.715972, "DT-035", null, null, null, "Bostezo", null, 0.717708, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46341.0, null, 0.770833, "DT-059", null, null, null, "Sin uso de cinturón de seguridad", null, 0.773843, null, 0.774537, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46341.0, null, 0.820833, "DT-045", null, null, null, "Uso de celular", null, 0.821181, null, 0.822569, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46341.0, null, 0.909028, "DT-019", null, null, null, "Distracción", null, 0.911343, null, 0.913426, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.00625, "DT-020", null, null, null, "Uso de celular", null, 0.007407, null, 0.010185, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46342.0, null, 0.098611, "DT-017", null, null, null, "Distracción", null, 0.099653, null, 0.101736, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.159722, "DT-012", null, null, null, "Uso de celular", null, 0.16088, null, 0.162269, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46342.0, null, 0.285417, "DT-062", null, null, null, "Bostezo", null, 0.286574, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46342.0, null, 0.321528, "DT-004", null, null, null, "Bostezo", null, 0.322917, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46342.0, null, 0.327778, "DT-053", null, null, null, "Bostezo frecuente", null, 0.328935, null, 0.331019, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 9], [null, 46342.0, null, 0.438194, "DT-019", null, null, null, "Distracción", null, 0.439063, null, 0.442535, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.476389, "DT-015", null, null, null, "Sin uso de cinturón de seguridad", null, 0.477431, null, 0.478819, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46342.0, null, 0.504167, "DT-053", null, null, null, "Distracción", null, 0.505556, null, 0.507639, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.509028, "DT-035", null, null, null, "Cámara obstruida", null, 0.511343, null, 0.512037, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.6125, "DT-060", null, null, null, "Distracción", null, 0.613657, null, 0.616435, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.809028, "DT-012", null, null, null, "Distracción", null, 0.812037, null, 0.814815, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46342.0, null, 0.810417, "DT-053", null, null, null, "Bostezo", null, 0.810764, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46342.0, null, 0.821528, "DT-052", null, null, null, "Bostezo frecuente", null, 0.823264, null, 0.826736, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 11], [null, 46342.0, null, 0.895833, "DT-028", null, null, null, "Distracción", null, 0.896181, null, 0.898264, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.092361, "DT-014", null, null, "OPERADOR A02", "Bostezo", null, 0.093229, null, null, "Contacto radial – continúa operando", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46343.0, null, 0.109722, "DT-042", null, null, null, "Bostezo", null, 0.110069, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46343.0, null, 0.208333, "DT-020", null, null, null, "Cámara obstruida", null, 0.209722, null, 0.211111, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.236111, "DT-011", null, null, null, "Bostezo", null, 0.238426, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46343.0, null, 0.322917, "DT-033", null, null, null, "Cámara obstruida", null, 0.323264, null, 0.323958, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.349306, "DT-019", null, null, null, "Conductor no detectado", null, 0.350174, null, 0.35434, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.410417, "DT-006", null, null, null, "Bostezo frecuente", null, 0.411285, null, 0.413368, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 12], [null, 46343.0, null, 0.451389, "DT-063", null, null, null, "Distracción", null, 0.452431, null, 0.454514, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.488889, "DT-030", null, null, null, "Fumar en cabina", null, 0.489236, null, 0.491319, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.609722, "DT-026", null, null, null, "Conductor no detectado", null, 0.610069, null, 0.612153, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.68125, "DT-035", null, null, null, "Distracción", null, 0.682407, null, 0.684491, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.703472, "DT-002", null, null, null, "Fumar en cabina", null, 0.70463, null, 0.708102, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46343.0, null, 0.78125, "DT-042", null, null, null, "Conducción con fatiga", null, 0.782118, null, 0.786285, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 25], [null, 46343.0, null, 0.826389, "DT-004", null, null, null, "Conducción con fatiga reiterada", null, 0.828125, null, 0.830903, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 54], [null, 46343.0, null, 0.849306, "DT-035", null, null, null, "Bostezo frecuente", null, 0.85162, null, 0.852315, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46343.0, null, 0.954861, "DT-042", null, null, null, "Bostezo", null, 0.957176, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46343.0, null, 0.973611, "DT-029", null, null, null, "Bostezo", null, 0.973958, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46343.0, null, 0.997222, "DT-053", null, null, null, "Conducción con fatiga", null, 0.000231, null, 0.002315, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 16], [null, 46344.0, null, 0.172222, "DT-035", null, null, null, "Distracción", null, 0.17338, null, 0.174074, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46344.0, null, 0.176389, "DT-020", null, null, null, "Bostezo", null, 0.177083, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46344.0, null, 0.2625, "DT-020", null, null, null, "Bostezo", null, 0.263889, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46344.0, null, 0.270139, "DT-042", null, null, null, "Conducción con fatiga", null, 0.272454, null, 0.273148, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 22], [null, 46344.0, null, 0.409028, "DT-048", null, null, null, "Cámara obstruida", null, 0.411343, null, 0.412037, "Contacto radial – retiro de obstrucción de cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46344.0, null, 0.452083, "DT-002", null, null, null, "Uso de celular", null, 0.452431, null, 0.453819, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46344.0, null, 0.520833, "DT-004", null, null, null, "Conducción con fatiga reiterada", null, 0.522569, null, 0.523958, "Detención inmediata – relevo del operador – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 59], [null, 46344.0, null, 0.740972, "DT-042", null, null, null, "Conductor no detectado", null, 0.74213, null, 0.745602, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46344.0, null, 0.886111, "DT-004", null, null, null, "Bostezo frecuente", null, 0.888426, null, 0.88912, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 9], [null, 46344.0, null, 0.894444, "DT-035", null, null, null, "Conducción con fatiga", null, 0.895312, null, 0.897396, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 14], [null, 46344.0, null, 0.9375, "DT-044", null, null, null, "Bostezo frecuente", null, 0.938194, null, 0.942361, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 8], [null, 46345.0, null, 0.249306, "DT-008", null, null, null, "Uso de celular", null, 0.250347, null, 0.253819, "Comunicado a O1/O2 y SSOMA – intervención al operador", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", null], [null, 46345.0, null, 0.370139, "DT-023", null, null, null, "Bostezo", null, 0.370833, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46345.0, null, 0.416667, "DT-025", null, null, null, "Distracción", null, 0.417361, null, 0.421528, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46345.0, null, 0.457639, "DT-056", null, null, null, "Conductor no detectado", null, 0.458681, null, 0.459375, "Contacto radial – reubicación del operador frente a la cámara", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46345.0, null, 0.543056, "DT-037", null, null, null, "Bostezo", null, 0.544792, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46345.0, null, 0.709028, "DT-038", null, null, null, "Bostezo", null, 0.711343, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46345.0, null, 0.792361, "DT-004", null, null, null, "Conducción con fatiga", null, 0.793056, null, 0.797222, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46345.0, null, 0.814583, "DT-035", null, null, "OPERADOR B29", "Bostezo frecuente", null, 0.817593, null, 0.818981, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46346.0, null, 0.034028, "DT-065", null, null, null, "Distracción", null, 0.035764, null, 0.039236, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46346.0, null, 0.081944, "DT-035", null, null, null, "Bostezo", null, 0.084259, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46346.0, null, 0.265972, "DT-047", null, null, null, "Bostezo", null, 0.266319, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46346.0, null, 0.269444, "DT-060", null, null, null, "Conducción con fatiga", null, 0.270139, null, 0.272222, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 15], [null, 46346.0, null, 0.404861, "DT-042", null, null, null, "Conducción con fatiga", null, 0.40625, null, 0.407639, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 10], [null, 46346.0, null, 0.411111, "DT-035", null, null, null, "Distracción", null, 0.411458, null, 0.415625, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46346.0, null, 0.463194, "DT-035", null, null, null, "Distracción", null, 0.463889, null, 0.464583, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46346.0, null, 0.517361, "DT-007", null, null, null, "Distracción", null, 0.518403, null, 0.520486, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null], [null, 46346.0, null, 0.55, "DT-026", null, null, "OPERADOR A54", "Bostezo", null, 0.553009, null, null, "Contacto radial – continúa operando", "Asistente CF", "Operador de reemplazo", null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46346.0, null, 0.735417, "DT-042", null, null, null, "Bostezo", null, 0.736574, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No realizó", null], [null, 46346.0, null, 0.804167, "DT-042", null, null, null, "Bostezo frecuente", null, 0.804861, null, 0.806944, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 7], [null, 46347.0, null, 0.138194, "DT-005", null, null, null, "Conducción con fatiga", null, 0.140509, null, 0.143287, "Detención inmediata – pausa activa obligatoria – declaración SSOMA", "Asistente CF", null, null, null, null, null, null, null, null, null, "Sí", "Obligatoria", 17], [null, 46347.0, null, 0.190278, "DT-035", null, null, null, "Bostezo", null, 0.191146, null, null, "Contacto radial – continúa operando", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "Voluntaria", null], [null, 46347.0, null, 0.273611, "DT-065", null, null, null, "Distracción", null, 0.274769, null, 0.277546, "Retroalimentación al operador (O1/O2)", "Asistente CF", null, null, null, null, null, null, null, null, null, null, "No aplica", null]], "op": [["OPERADORES POR GUARDIA Y EQUIPO", null, null], ["Un operador por fila con su guardia (A/B/C) y el camión asignado. Cada camión tiene un operador por guardia (65 × 3 = 195).", null, null], [null, null, null], ["Operador (nombre completo)", "Guardia", "Equipo asignado"], ["OPERADOR A01", "A", "DT-001"], ["OPERADOR A02", "A", "DT-002"], ["OPERADOR A03", "A", "DT-003"], ["OPERADOR A04", "A", "DT-004"], ["OPERADOR A05", "A", "DT-005"], ["OPERADOR A06", "A", "DT-006"], ["OPERADOR A07", "A", "DT-007"], ["OPERADOR A08", "A", "DT-008"], ["OPERADOR A09", "A", "DT-009"], ["OPERADOR A10", "A", "DT-010"], ["OPERADOR A11", "A", "DT-011"], ["OPERADOR A12", "A", "DT-012"], ["OPERADOR A13", "A", "DT-013"], ["OPERADOR A14", "A", "DT-014"], ["OPERADOR A15", "A", "DT-015"], ["OPERADOR A16", "A", "DT-016"], ["OPERADOR A17", "A", "DT-017"], ["OPERADOR A18", "A", "DT-018"], ["OPERADOR A19", "A", "DT-019"], ["OPERADOR A20", "A", "DT-020"], ["OPERADOR A21", "A", "DT-021"], ["OPERADOR A22", "A", "DT-022"], ["OPERADOR A23", "A", "DT-023"], ["OPERADOR A24", "A", "DT-024"], ["OPERADOR A25", "A", "DT-025"], ["OPERADOR A26", "A", "DT-026"], ["OPERADOR A27", "A", "DT-027"], ["OPERADOR A28", "A", "DT-028"], ["OPERADOR A29", "A", "DT-029"], ["OPERADOR A30", "A", "DT-030"], ["OPERADOR A31", "A", "DT-031"], ["OPERADOR A32", "A", "DT-032"], ["OPERADOR A33", "A", "DT-033"], ["OPERADOR A34", "A", "DT-034"], ["OPERADOR A35", "A", "DT-035"], ["OPERADOR A36", "A", "DT-036"], ["OPERADOR A37", "A", "DT-037"], ["OPERADOR A38", "A", "DT-038"], ["OPERADOR A39", "A", "DT-039"], ["OPERADOR A40", "A", "DT-040"], ["OPERADOR A41", "A", "DT-041"], ["OPERADOR A42", "A", "DT-042"], ["OPERADOR A43", "A", "DT-043"], ["OPERADOR A44", "A", "DT-044"], ["OPERADOR A45", "A", "DT-045"], ["OPERADOR A46", "A", "DT-046"], ["OPERADOR A47", "A", "DT-047"], ["OPERADOR A48", "A", "DT-048"], ["OPERADOR A49", "A", "DT-049"], ["OPERADOR A50", "A", "DT-050"], ["OPERADOR A51", "A", "DT-051"], ["OPERADOR A52", "A", "DT-052"], ["OPERADOR A53", "A", "DT-053"], ["OPERADOR A54", "A", "DT-054"], ["OPERADOR A55", "A", "DT-055"], ["OPERADOR A56", "A", "DT-056"], ["OPERADOR A57", "A", "DT-057"], ["OPERADOR A58", "A", "DT-058"], ["OPERADOR A59", "A", "DT-059"], ["OPERADOR A60", "A", "DT-060"], ["OPERADOR A61", "A", "DT-061"], ["OPERADOR A62", "A", "DT-062"], ["OPERADOR A63", "A", "DT-063"], ["OPERADOR A64", "A", "DT-064"], ["OPERADOR A65", "A", "DT-065"], ["OPERADOR B01", "B", "DT-001"], ["OPERADOR B02", "B", "DT-002"], ["OPERADOR B03", "B", "DT-003"], ["OPERADOR B04", "B", "DT-004"], ["OPERADOR B05", "B", "DT-005"], ["OPERADOR B06", "B", "DT-006"], ["OPERADOR B07", "B", "DT-007"], ["OPERADOR B08", "B", "DT-008"], ["OPERADOR B09", "B", "DT-009"], ["OPERADOR B10", "B", "DT-010"], ["OPERADOR B11", "B", "DT-011"], ["OPERADOR B12", "B", "DT-012"], ["OPERADOR B13", "B", "DT-013"], ["OPERADOR B14", "B", "DT-014"], ["OPERADOR B15", "B", "DT-015"], ["OPERADOR B16", "B", "DT-016"], ["OPERADOR B17", "B", "DT-017"], ["OPERADOR B18", "B", "DT-018"], ["OPERADOR B19", "B", "DT-019"], ["OPERADOR B20", "B", "DT-020"], ["OPERADOR B21", "B", "DT-021"], ["OPERADOR B22", "B", "DT-022"], ["OPERADOR B23", "B", "DT-023"], ["OPERADOR B24", "B", "DT-024"], ["OPERADOR B25", "B", "DT-025"], ["OPERADOR B26", "B", "DT-026"], ["OPERADOR B27", "B", "DT-027"], ["OPERADOR B28", "B", "DT-028"], ["OPERADOR B29", "B", "DT-029"], ["OPERADOR B30", "B", "DT-030"], ["OPERADOR B31", "B", "DT-031"], ["OPERADOR B32", "B", "DT-032"], ["OPERADOR B33", "B", "DT-033"], ["OPERADOR B34", "B", "DT-034"], ["OPERADOR B35", "B", "DT-035"], ["OPERADOR B36", "B", "DT-036"], ["OPERADOR B37", "B", "DT-037"], ["OPERADOR B38", "B", "DT-038"], ["OPERADOR B39", "B", "DT-039"], ["OPERADOR B40", "B", "DT-040"], ["OPERADOR B41", "B", "DT-041"], ["OPERADOR B42", "B", "DT-042"], ["OPERADOR B43", "B", "DT-043"], ["OPERADOR B44", "B", "DT-044"], ["OPERADOR B45", "B", "DT-045"], ["OPERADOR B46", "B", "DT-046"], ["OPERADOR B47", "B", "DT-047"], ["OPERADOR B48", "B", "DT-048"], ["OPERADOR B49", "B", "DT-049"], ["OPERADOR B50", "B", "DT-050"], ["OPERADOR B51", "B", "DT-051"], ["OPERADOR B52", "B", "DT-052"], ["OPERADOR B53", "B", "DT-053"], ["OPERADOR B54", "B", "DT-054"], ["OPERADOR B55", "B", "DT-055"], ["OPERADOR B56", "B", "DT-056"], ["OPERADOR B57", "B", "DT-057"], ["OPERADOR B58", "B", "DT-058"], ["OPERADOR B59", "B", "DT-059"], ["OPERADOR B60", "B", "DT-060"], ["OPERADOR B61", "B", "DT-061"], ["OPERADOR B62", "B", "DT-062"], ["OPERADOR B63", "B", "DT-063"], ["OPERADOR B64", "B", "DT-064"], ["OPERADOR B65", "B", "DT-065"], ["OPERADOR C01", "C", "DT-001"], ["OPERADOR C02", "C", "DT-002"], ["OPERADOR C03", "C", "DT-003"], ["OPERADOR C04", "C", "DT-004"], ["OPERADOR C05", "C", "DT-005"], ["OPERADOR C06", "C", "DT-006"], ["OPERADOR C07", "C", "DT-007"], ["OPERADOR C08", "C", "DT-008"], ["OPERADOR C09", "C", "DT-009"], ["OPERADOR C10", "C", "DT-010"], ["OPERADOR C11", "C", "DT-011"], ["OPERADOR C12", "C", "DT-012"], ["OPERADOR C13", "C", "DT-013"], ["OPERADOR C14", "C", "DT-014"], ["OPERADOR C15", "C", "DT-015"], ["OPERADOR C16", "C", "DT-016"], ["OPERADOR C17", "C", "DT-017"], ["OPERADOR C18", "C", "DT-018"], ["OPERADOR C19", "C", "DT-019"], ["OPERADOR C20", "C", "DT-020"], ["OPERADOR C21", "C", "DT-021"], ["OPERADOR C22", "C", "DT-022"], ["OPERADOR C23", "C", "DT-023"], ["OPERADOR C24", "C", "DT-024"], ["OPERADOR C25", "C", "DT-025"], ["OPERADOR C26", "C", "DT-026"], ["OPERADOR C27", "C", "DT-027"], ["OPERADOR C28", "C", "DT-028"], ["OPERADOR C29", "C", "DT-029"], ["OPERADOR C30", "C", "DT-030"], ["OPERADOR C31", "C", "DT-031"], ["OPERADOR C32", "C", "DT-032"], ["OPERADOR C33", "C", "DT-033"], ["OPERADOR C34", "C", "DT-034"], ["OPERADOR C35", "C", "DT-035"], ["OPERADOR C36", "C", "DT-036"], ["OPERADOR C37", "C", "DT-037"], ["OPERADOR C38", "C", "DT-038"], ["OPERADOR C39", "C", "DT-039"], ["OPERADOR C40", "C", "DT-040"], ["OPERADOR C41", "C", "DT-041"], ["OPERADOR C42", "C", "DT-042"], ["OPERADOR C43", "C", "DT-043"], ["OPERADOR C44", "C", "DT-044"], ["OPERADOR C45", "C", "DT-045"], ["OPERADOR C46", "C", "DT-046"], ["OPERADOR C47", "C", "DT-047"], ["OPERADOR C48", "C", "DT-048"], ["OPERADOR C49", "C", "DT-049"], ["OPERADOR C50", "C", "DT-050"], ["OPERADOR C51", "C", "DT-051"], ["OPERADOR C52", "C", "DT-052"], ["OPERADOR C53", "C", "DT-053"], ["OPERADOR C54", "C", "DT-054"], ["OPERADOR C55", "C", "DT-055"], ["OPERADOR C56", "C", "DT-056"], ["OPERADOR C57", "C", "DT-057"], ["OPERADOR C58", "C", "DT-058"], ["OPERADOR C59", "C", "DT-059"], ["OPERADOR C60", "C", "DT-060"], ["OPERADOR C61", "C", "DT-061"], ["OPERADOR C62", "C", "DT-062"], ["OPERADOR C63", "C", "DT-063"], ["OPERADOR C64", "C", "DT-064"], ["OPERADOR C65", "C", "DT-065"]], "listas": [["Turno", "Tipo de alerta", "Nivel", "Comunicado a", "Guardia", "Filtro turno", "Equipos (camiones)", "Alerta en E-Mine", "Nivel", "Comunicar a", "Acción estándar", null, "MATRIZ DE RESPUESTA (H:K): el Nivel y a quién comunicar de BD_Alertas se toman de aquí según el tipo de alerta. La columna K es la acción estándar de referencia; la acción adoptada se elige en BD_Alertas de la lista de la columna O (puedes agregar más). Si agregas un tipo nuevo, agrégalo también en la columna B.", null, "Acciones posibles (lista de BD_Alertas)"], ["Día", "Bostezo", "Leve", "Operador", "A", "Todos", "DT-001", "Bostezo", "Leve", "Operador", "Contacto radial para confirmar su estado; puede continuar la operación y solicitar pausa activa.", null, null, null, "Contacto radial – continúa operando"], ["Noche", "Bostezo frecuente", "Moderado", "O1", "B", "Día", "DT-002", "Bostezo frecuente", "Moderado", "Operador / O1-O2", "Contacto radial para que estacione en zona segura; O1/O2 confirma pausa activa obligatoria de 5 a 10 min. Seguimiento por cámara 30 min.", null, null, null, "Contacto radial – pausa activa voluntaria"], [null, "Conducción con fatiga", "Crítico", "O2", "C", "Noche", "DT-003", "Conducción con fatiga", "Crítico", "Operador / O1-O2-SSOMA", "Detención inmediata del equipo en zona segura; O1, O2 o SSOMA (prioridad) confirma pausa activa obligatoria de 5 a 10 min. SSOMA toma la declaración de fatiga. Seguimiento por cámara 30 min.", null, null, null, "Estaciona en zona segura – pausa activa obligatoria (5-10 min)"], [null, "Conducción con fatiga reiterada", "Conducta insegura", "SSOMA", null, null, "DT-004", "Conducción con fatiga reiterada", "Crítico", "Operador / O1-O2 / SSOMA", "Detención inmediata; segundo evento en el turno: relevo del operador o, sin reemplazo, equipo detenido y pausa de sueño. SSOMA toma la declaración de fatiga.", null, null, null, "Detención inmediata – pausa activa obligatoria – declaración SSOMA"], [null, "Uso de celular", "Condición del sistema", "Despacho", "Inicio ciclo 14x7", null, "DT-005", "Uso de celular", "Crítico", "O1-O2 / SSOMA", "Comunicar de inmediato a O1/O2 y a SSOMA.", null, null, null, "Detención inmediata – relevo del operador – declaración SSOMA"], [null, "Sin uso de cinturón de seguridad", null, "S1", 46337.0, null, "DT-006", "Sin uso de cinturón de seguridad", "Crítico", "O1-O2 / SSOMA", "Comunicar de inmediato a O1/O2 y a SSOMA.", null, null, null, "Detención inmediata – equipo detenido sin reemplazo – pausa de sueño"], [null, "Distracción", null, "Operador / O1", "En esta fecha: Día = A, Noche = B, Descanso = C. Cada 7 días rota: Día A→C→B, Noche B→A→C.", null, "DT-007", "Distracción", "Conducta insegura", "Operador", "Contacto radial para informar al operador de la conducta observada.", null, null, null, "Pausa de sueño (20 min)"], [null, "Fumar en cabina", null, "Operador / O2", null, null, "DT-008", "Fumar en cabina", "Conducta insegura", "SSOMA / O1", "Informar a SSOMA o al O1 (sin contacto radial al operador) para las medidas según el Reglamento Interno de Seguridad.", null, null, null, "Comunicado a O1/O2 y SSOMA – intervención al operador"], [null, "Cámara obstruida", null, "O1 / SSOMA", null, null, "DT-009", "Cámara obstruida", "Condición del sistema", "Operador (O1-O2 si persiste)", "Contacto radial para que retire la obstrucción; si persiste, comunicar a O1/O2; si se repite o es intencional, reportar como posible manipulación.", null, null, null, "Retroalimentación al operador (O1/O2)"], [null, "Conductor no detectado", null, "O2 / SSOMA", null, null, "DT-010", "Conductor no detectado", "Condición del sistema", "Operador (O1-O2 si persiste)", "Contacto radial para que se ubique correctamente; si persiste, comunicar a O1/O2.", null, null, null, "Contacto radial – retiro de obstrucción de cámara"], [null, null, null, null, null, null, "DT-011", null, null, null, null, null, null, null, "Contacto radial – reubicación del operador frente a la cámara"], [null, null, null, null, null, null, "DT-012", null, null, null, null, null, null, null, "Reporte por posible manipulación de cámara"], [null, null, null, null, null, null, "DT-013", null, null, null, null, null, null, null, "Derivación a Salud Ocupacional"], [null, null, null, null, null, null, "DT-014", null, null, null, null, null, null, null, "Informado a SSOMA / O1 (sin contacto radial)"], [null, null, null, null, null, null, "DT-015", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-016", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-017", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-018", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-019", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-020", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-021", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-022", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-023", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-024", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-025", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-026", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-027", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-028", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-029", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-030", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-031", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-032", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-033", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-034", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-035", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-036", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-037", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-038", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-039", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-040", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-041", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-042", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-043", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-044", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-045", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-046", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-047", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-048", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-049", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-050", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-051", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-052", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-053", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-054", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-055", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-056", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-057", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-058", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-059", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-060", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-061", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-062", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-063", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-064", null, null, null, null, null, null, null, null], [null, null, null, null, null, null, "DT-065", null, null, null, null, null, null, null, null]]};
+const LOGO = "data:image/png;base64,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";
+document.getElementById('logoImg').src = LOGO;
+
+/* ================= Configuración ================= */
+const NIVELES = ['Crítico','Moderado','Leve','Conducta insegura','Condición del sistema'];
+const NIV_COL = {'Crítico':'#D64545','Moderado':'#F0A04B','Leve':'#7CC58F','Conducta insegura':'#5B9BD5','Condición del sistema':'#A5ADBA','Sin clasificar':'#D0D4DC'};
+const FATIGA = ['Bostezo frecuente','Conducción con fatiga','Conducción con fatiga reiterada'];
+const G_COL = {A:'#1F3E9C',B:'#0F8B8D',C:'#8E44AD'};
+const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const MATRIZ_DEF = {'Bostezo':'Leve','Bostezo frecuente':'Moderado','Conducción con fatiga':'Crítico','Conducción con fatiga reiterada':'Crítico','Uso de celular':'Crítico','Sin uso de cinturón de seguridad':'Crítico','Distracción':'Conducta insegura','Fumar en cabina':'Conducta insegura','Cámara obstruida':'Condición del sistema','Conductor no detectado':'Condición del sistema'};
+const UMBRAL_REINC = 2;
+
+/* ================= Fechas (número de serie de Excel = días desde 30/12/1899) ================= */
+const MS = 864e5, EPOCH = Date.UTC(1899,11,30);
+const dDate = s => new Date(EPOCH + s*MS);
+const fmt = s => { const d=dDate(s); return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear(); };
+const fmtC = s => { const d=dDate(s); return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0'); };
+const wd = s => dDate(s).getUTCDay();
+const MES3 = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'], D3 = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const fmtS = s => { const d=dDate(s); return `${D3[d.getUTCDay()]} ${d.getUTCDate()} ${MES3[d.getUTCMonth()]}`; };
+const fmtY = s => fmtS(s)+' '+dDate(s).getUTCFullYear();
+const toISO = s => dDate(s).toISOString().slice(0,10);
+const fromISO = iso => { const [y,m,d]=iso.split('-').map(Number); return Math.round((Date.UTC(y,m-1,d)-EPOCH)/MS); };
+const weekStart = s => s - ((wd(s) - 3 + 7) % 7);           // miércoles
+const hhmm = m => m==null ? '-' : String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(Math.round(m%60)).padStart(2,'0');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+
+/* ================= Estado ================= */
+const S = { data:null, vista:'pres', tipo:'guardia', fecha:null, desde:null, hasta:null, oper:'', fuente:'ejemplo' };
+
+/* ================= Lectura del Excel ================= */
+function toMinutes(v){
+  if (v==null || v==='') return null;
+  if (typeof v==='number') return Math.round((v - Math.floor(v)) * 1440) % 1440;
+  const m = String(v).match(/(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null;
+}
+function toSerial(v){
+  if (v==null || v==='') return null;
+  if (typeof v==='number') return Math.floor(v);
+  if (v instanceof Date) return Math.round((Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())-EPOCH)/MS);
+  const m = String(v).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m){ const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return Math.round((Date.UTC(y,+m[2]-1,+m[1])-EPOCH)/MS); }
+  return null;
+}
+function findCol(header, ...names){
+  const H = header.map(norm);
+  for (const n of names){ const k=norm(n); const i=H.findIndex(h=>h.startsWith(k)); if (i>=0) return i; }
+  return -1;
+}
+function procesar(raw){
+  // raw = {bd:[[...]], op:[[...]], listas:[[...]]}
+  // ---- matriz y rol
+  const matriz = {...MATRIZ_DEF}; const acciones = {}; const comunic = {};
+  let anchor = fromISO('2026-11-11');
+  (raw.listas||[]).forEach((r,i) => {
+    if (i>0 && typeof r[7]==='string' && typeof r[8]==='string' && r[7].trim()){ matriz[r[7].trim()] = r[8].trim(); comunic[r[7].trim()] = r[9]||''; acciones[r[7].trim()] = r[10]||''; }
+    if (typeof r[4]==='string' && norm(r[4]).startsWith('iniciociclo')){ const v=(raw.listas[i+1]||[])[4]; const s=toSerial(v); if (s) anchor=s; }
+  });
+  // ---- operadores
+  const asign = {}, infoOp = {};
+  const op = raw.op || [];
+  let h = op.findIndex(r => norm(r[0]).startsWith('operador') && r.some(v => norm(v).startsWith('guardia')));
+  if (h>=0){
+    const cG = findCol(op[h],'Guardia'), cE = findCol(op[h],'Equipo');
+    op.slice(h+1).forEach(r => {
+      const n = String(r[0]??'').trim(); if (!n) return;
+      const g = String(r[cG]??'').trim().toUpperCase(), e = String(r[cE]??'').trim().toUpperCase();
+      infoOp[n] = {g, e}; if (g && e) asign[e+'|'+g] = n;
+    });
+  }
+  // ---- alertas
+  const bd = raw.bd; if (!bd || !bd.length) throw new Error('No encontré la hoja BD_Alertas.');
+  const H = bd[0];
+  const c = {
+    fecha: findCol(H,'Fecha (calendario)','Fecha'), hora: findCol(H,'Hora de alerta'), equipo: findCol(H,'Equipo'),
+    guardia: findCol(H,'Guardia'), auto: findCol(H,'Operador (auto)','Operador'), reem: findCol(H,'Operador reemplazo'),
+    tipo: findCol(H,'Tipo de alerta'), hcom: findCol(H,'Hora de comunicación'), hres: findCol(H,'Hora de respuesta'),
+    com: findCol(H,'Comunicado a'), acc: findCol(H,'Acción adoptada'), obs: findCol(H,'Observaciones'),
+    pausa: findCol(H,'Pausa activa'), seg: findCol(H,'Seguimiento 30'), det: findCol(H,'Tiempo detenido')
+  };
+  if (c.fecha<0 || c.hora<0 || c.tipo<0) throw new Error('La hoja BD_Alertas no tiene las columnas Fecha, Hora de alerta y Tipo de alerta.');
+  const rol = (fg, turno) => { const b = Math.floor((((fg-anchor)%21)+21)%21/7); return turno==='Día' ? 'ACB'[b] : 'BAC'[b]; };
+  const recs = [];
+  for (let i=1;i<bd.length;i++){
+    const r = bd[i]; const f = toSerial(r[c.fecha]), m = toMinutes(r[c.hora]); const tipo = String(r[c.tipo]??'').trim();
+    if (f==null || m==null || !tipo) continue;
+    const turno = (m>=420 && m<1140) ? 'Día' : 'Noche';
+    const fg = m<420 ? f-1 : f;
+    const g = rol(fg, turno);
+    const eq = String(r[c.equipo]??'').trim().toUpperCase();
+    const reem = c.reem>=0 ? String(r[c.reem]??'').trim() : '';
+    let oper = reem || asign[eq+'|'+g];
+    if (!oper){ const a = c.auto>=0 ? String(r[c.auto]??'').trim() : ''; oper = a && !a.startsWith('⚠') ? a : 'SIN ASIGNAR'; }
+    const mc = c.hcom>=0 ? toMinutes(r[c.hcom]) : null;
+    recs.push({ f, m, turno, fg, g, eq, oper, reem: !!reem, tipo, nivel: matriz[tipo] || 'Sin clasificar', fat: FATIGA.includes(tipo),
+      minCom: mc==null ? null : ((mc - m + 1440) % 1440), mres: c.hres>=0 ? toMinutes(r[c.hres]) : null,
+      com: (c.com>=0 && r[c.com]) || comunic[tipo] || '', acc: c.acc>=0 ? (r[c.acc]||'') : (acciones[tipo] || ''), obs: c.obs>=0 ? (r[c.obs]||'') : '',
+      pausa: c.pausa>=0 ? String(r[c.pausa]??'') : '', seg: c.seg>=0 ? String(r[c.seg]??'') : '', det: c.det>=0 && r[c.det]!==null && r[c.det]!=='' && !isNaN(+r[c.det]) ? +r[c.det] : null });
+  }
+  if (!recs.length) throw new Error('No hay alertas registradas en BD_Alertas.');
+  recs.sort((a,b)=> a.fg-b.fg || ((a.m-420+1440)%1440) - ((b.m-420+1440)%1440));
+  const tipos = [...new Set([...Object.keys(matriz), ...recs.map(r=>r.tipo)])];
+  return { recs, infoOp, matriz, tipos, anchor, rol, min: recs[0].fg, max: recs[recs.length-1].fg };
+}
+function leerLibro(buf){
+  const wb = XLSX.read(buf, {type:'array'});
+  const get = n => { const k = wb.SheetNames.find(s => norm(s)===norm(n)); return k ? XLSX.utils.sheet_to_json(wb.Sheets[k], {header:1, raw:true, defval:null}) : null; };
+  const bd = get('BD_Alertas') || XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, raw:true, defval:null});
+  return { bd, op: get('Operadores') || [], listas: get('Listas') || [] };
+}
+
+/* ================= Cálculos ================= */
+const count = (arr, fn) => arr.reduce((a,r)=>a+(fn(r)?1:0),0);
+function groupBy(arr, key){ const m=new Map(); arr.forEach(r=>{const k=typeof key==='function'?key(r):r[key]; if(!m.has(k)) m.set(k,[]); m.get(k).push(r);}); return m; }
+function kpis(d){
+  const com = d.filter(r=>r.minCom!=null);
+  return {
+    total: d.length, crit: count(d,r=>r.nivel==='Crítico'), fat: count(d,r=>r.fat),
+    ops: new Set(d.filter(r=>r.oper!=='SIN ASIGNAR').map(r=>r.oper)).size, eqs: new Set(d.map(r=>r.eq).filter(Boolean)).size,
+    prom: com.length ? (com.reduce((a,r)=>a+r.minCom,0)/com.length) : null,
+    ok2: com.length ? count(com,r=>r.minCom<=2)/com.length : null
+  };
+}
+function ranking(d){
+  const g = groupBy(d,'oper'); const out=[];
+  g.forEach((rs,op)=>{ const o={op, total:rs.length, fat:count(rs,r=>r.fat), dia:count(rs,r=>r.turno==='Día'), noche:count(rs,r=>r.turno==='Noche'), eq:mode(rs.map(r=>r.eq)), g:mode(rs.map(r=>r.g)), reem:count(rs,r=>r.reem)};
+    NIVELES.forEach(n=>o[n]=count(rs,r=>r.nivel===n)); o.cm=o['Crítico']+o['Moderado']; o.otras=o.total-o.cm;
+    const cms=rs.filter(r=>r.nivel==='Crítico'||r.nivel==='Moderado'); o.cmDia=count(cms,r=>r.turno==='Día'); o.cmNoche=count(cms,r=>r.turno==='Noche'); out.push(o); });
+  return out.sort((a,b)=> b.total-a.total || b['Crítico']-a['Crítico'] || b.fat-a.fat || a.op.localeCompare(b.op));
+}
+function rankingCM(d){
+  return ranking(d).filter(o=>o.cm>0).sort((a,b)=> b.cm-a.cm || b['Crítico']-a['Crítico'] || b.fat-a.fat || a.op.localeCompare(b.op));
+}
+function mode(a){ const m={}; let best='',n=0; a.forEach(x=>{m[x]=(m[x]||0)+1; if(m[x]>n){n=m[x];best=x;}}); return best; }
+
+/* ================= Gráficos SVG ================= */
+function niceMax(v){ if (v<=5) return Math.max(v,1); const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p; const k = n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10; return k*p; }
+function ticks(max){ const step = max<=5?1:max<=10?2:niceMax(max/5); const t=[]; for(let v=0;v<=max+1e-9;v+=step) t.push(Math.round(v*100)/100); return t; }
+const tw = (s, px=11) => String(s).length * px * 0.62;
+
+function legendHTML(items){ return '<div class="legend">'+items.map(([n,c])=>`<span><i style="background:${c}"></i>${esc(n)}</span>`).join('')+'</div>'; }
+
+/* barras horizontales apiladas: items=[{label, segs:[{v,c,n}], tag}] */
+function hBars(items, {W=520, rowH=22, labelW=null, empty='Sin datos'}={}){
+  if (!items.length) return `<div class="empty">${empty}</div>`;
+  const dos = items.some(i=>i.label2); if (dos) rowH = Math.max(rowH, 28);
+  const tot = items.map(i=>i.segs.reduce((a,s)=>a+s.v,0));
+  const max = niceMax(Math.max(...tot,1)); const tk = ticks(max);
+  const LW = labelW ?? (dos ? Math.min(260, Math.max(...items.map(i=>Math.max(tw(i.label,11.5)*1.05, tw(i.label2||'',10.5)))))+12 : Math.min(220, Math.max(...items.map(i=>tw(i.label,11.5)))+12));
+  const PW = W - LW - (items.some(i=>i.note)?92:34); const H = items.length*rowH + 26;
+  const x = v => LW + v/max*PW;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">`;
+  tk.forEach(t=>{ s+=`<line x1="${x(t)}" x2="${x(t)}" y1="4" y2="${H-20}" stroke="#E8EBF2"/><text x="${x(t)}" y="${H-6}" font-size="10" fill="#7A8396" text-anchor="middle">${t}</text>`; });
+  items.forEach((it,i)=>{
+    const y = 6 + i*rowH, bh = rowH-8; let acc=0;
+    s += dos ? `<text x="${LW-8}" y="${y+bh/2-1}" font-size="11" font-weight="700" fill="#18202E" text-anchor="end">${esc(it.label)}</text><text x="${LW-8}" y="${y+bh/2+10}" font-size="10" fill="#5E6779" text-anchor="end">${esc(it.label2||'')}</text>`
+             : `<text x="${LW-8}" y="${y+bh/2+4}" font-size="11.5" fill="#18202E" text-anchor="end">${esc(it.label)}</text>`;
+    it.segs.forEach(sg=>{ if(!sg.v) return; const w = sg.v/max*PW;
+      s += `<rect x="${x(acc)}" y="${y}" width="${Math.max(w,0.5)}" height="${bh}" fill="${sg.c}"><title>${esc(sg.n)}: ${sg.v}</title></rect>`;
+      if (w>16 && it.segs.length>1) s += `<text x="${x(acc)+w/2}" y="${y+bh/2+4}" font-size="10" fill="#fff" text-anchor="middle" font-weight="600">${sg.v}</text>`;
+      acc += sg.v; });
+    s += `<text x="${x(tot[i])+5}" y="${y+bh/2+4}" font-size="11.5" font-weight="700" fill="#18202E">${tot[i]}${it.note?`<tspan font-weight="400" font-size="10" fill="#7A8396"> ${esc(it.note)}</tspan>`:''}</text>`;
+  });
+  return s + '</svg>';
+}
+
+/* columnas apiladas: cols=[{label, sub, segs}] */
+function vCols(cols, {W=1040, H=210, empty='Sin datos', rotate=false, highlight=null, segLabels=false}={}){
+  if (!cols.length) return `<div class="empty">${empty}</div>`;
+  const tot = cols.map(c=>c.segs.reduce((a,s)=>a+s.v,0));
+  const max = niceMax(Math.max(...tot,1)); const tk = ticks(max);
+  const hasG = cols.some(c=>c.group); const L=30, B = rotate?44:(hasG?40:(cols.some(c=>c.sub)?34:22)), T=16, PW=W-L-6, PH=H-B-T;
+  const bw = PW/cols.length; const y = v => T + PH - v/max*PH;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">`;
+  tk.forEach(t=>{ s+=`<line x1="${L}" x2="${W-6}" y1="${y(t)}" y2="${y(t)}" stroke="#E8EBF2"/><text x="${L-6}" y="${y(t)+3.5}" font-size="10" fill="#7A8396" text-anchor="end">${t}</text>`; });
+  cols.forEach((c,i)=>{
+    const x0 = L + i*bw + bw*0.16, w = bw*0.68; let acc=0;
+    if (highlight && highlight(c,i)) s += `<rect x="${L+i*bw}" y="${T}" width="${bw}" height="${PH}" fill="#F3F5FB"/>`;
+    c.segs.forEach(sg=>{ if(!sg.v) return; const h = sg.v/max*PH; s+=`<rect x="${x0}" y="${y(acc+sg.v)}" width="${w}" height="${h}" fill="${sg.c}"><title>${esc(c.label)} · ${esc(sg.n)}: ${sg.v}</title></rect>`; if (segLabels && h>=14 && w>=14) s+=`<text x="${x0+w/2}" y="${y(acc+sg.v)+h/2+4}" font-size="10" font-weight="600" fill="#fff" text-anchor="middle">${sg.v}</text>`; acc+=sg.v; });
+    if (tot[i]) s += `<text x="${x0+w/2}" y="${y(tot[i])-4}" font-size="11" font-weight="700" text-anchor="middle" fill="#18202E">${tot[i]}</text>`;
+    const lx = x0+w/2, ly = T+PH+14;
+    s += rotate ? `<text x="${lx}" y="${ly}" font-size="10" fill="#3B4456" text-anchor="end" transform="rotate(-45 ${lx} ${ly})">${esc(c.label)}</text>`
+                : `<text x="${lx}" y="${ly}" font-size="10.5" fill="#3B4456" text-anchor="middle">${esc(c.label)}</text>`;
+    if (c.sub && !rotate) s += hasG ? `<text x="${lx}" y="${ly-1}" font-size="10.5" font-weight="700" fill="${G_COL[c.sub]||'#7A8396'}" text-anchor="middle">${esc(c.sub)}</text>`
+                                    : `<text x="${lx}" y="${ly+13}" font-size="9.5" fill="#7A8396" text-anchor="middle">${esc(c.sub)}</text>`;
+    if (c.group) s += `<text x="${L + (i+1)*bw}" y="${ly+16}" font-size="11.5" font-weight="600" fill="#18202E" text-anchor="middle">${esc(c.group)}</text><line x1="${L+i*bw+bw*0.2}" x2="${L+(i+2)*bw-bw*0.2}" y1="${ly+4}" y2="${ly+4}" stroke="#C9CFDA"/>`;
+  });
+  s += `<line x1="${L}" x2="${W-6}" y1="${T+PH}" y2="${T+PH}" stroke="#9AA3B5"/>`;
+  return s + '</svg>';
+}
+
+/* mapa de calor: filas × 24 horas (07→06) */
+function heat(rows, {W=1040}={}){
+  const hours = [...Array(24)].map((_,i)=>(i+7)%24);
+  const max = Math.max(1, ...rows.flatMap(r=>r.vals));
+  const LW = 92, cw = (W-LW-6)/24, ch = 22, H = rows.length*ch + 30;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">`;
+  hours.forEach((h,j)=>{ s+=`<text x="${LW+j*cw+cw/2}" y="11" font-size="9.5" fill="#7A8396" text-anchor="middle">${String(h).padStart(2,'0')}</text>`; });
+  s += `<line x1="${LW+12*cw}" x2="${LW+12*cw}" y1="14" y2="${H-4}" stroke="#18202E" stroke-dasharray="3 3"/>`;
+  rows.forEach((r,i)=>{
+    const y = 16 + i*ch;
+    s += `<text x="${LW-8}" y="${y+ch/2+3}" font-size="11" text-anchor="end" fill="#18202E">${esc(r.label)}</text>`;
+    r.vals.forEach((v,j)=>{ const a = v ? 0.15 + 0.85*v/max : 0;
+      s += `<rect x="${LW+j*cw+1}" y="${y+1}" width="${cw-2}" height="${ch-2}" rx="3" fill="${v?`rgba(214,69,69,${a.toFixed(2)})`:'#F3F5F9'}"><title>${esc(r.label)} ${String(hours[j]).padStart(2,'0')}:00 · ${v}</title></rect>`;
+      if (v) s += `<text x="${LW+j*cw+cw/2}" y="${y+ch/2+3.5}" font-size="10" text-anchor="middle" font-weight="600" fill="${a>0.55?'#fff':'#18202E'}">${v}</text>`; });
+  });
+  return s + '</svg>';
+}
+
+const nivelSegs = rs => NIVELES.map(n=>({n, c:NIV_COL[n], v:count(rs,r=>r.nivel===n)}));
+const LEG_NIV = legendHTML(NIVELES.map(n=>[n,NIV_COL[n]]));
+const TIPO_COL = {'Bostezo':'#8FCB7E','Bostezo frecuente':'#F0A04B','Conducción con fatiga':'#D64545','Conducción con fatiga reiterada':'#8B1E1E','Uso de celular':'#E377C2','Sin uso de cinturón de seguridad':'#9467BD','Distracción':'#4C8BD6','Fumar en cabina':'#2BB3C0','Cámara obstruida':'#A5ADBA','Conductor no detectado':'#5E6779'};
+const EXTRA_COL = ['#BCBD22','#17BECF','#FF9896','#C49C94','#7F7F7F'];
+const tipoCol = t => TIPO_COL[t] || EXTRA_COL[Math.abs([...t].reduce((a,c)=>a+c.charCodeAt(0),0)) % EXTRA_COL.length];
+const tipoSegs = rs => S.data.tipos.map(t=>({n:t, c:tipoCol(t), v:count(rs,r=>r.tipo===t)}));
+const legTipos = d => legendHTML(S.data.tipos.filter(t=>d.some(r=>r.tipo===t)).map(t=>[t,tipoCol(t)]));
+const horasCols = (d, desde=0, n=24) => [...Array(n)].map((_,i)=>{ const h=(7+desde+i)%24; const rs=d.filter(r=>Math.floor(r.m/60)===h); return {label:String(h).padStart(2,'0')+'h', segs:tipoSegs(rs)}; });
+function tiposBars(d, W=500){
+  const it = S.data.tipos.map(t=>({label:t, segs:[{n:t, c:NIV_COL[S.data.matriz[t]]||'#A5ADBA', v:count(d,r=>r.tipo===t)}]})).filter(i=>i.segs[0].v).sort((a,b)=>b.segs[0].v-a.segs[0].v);
+  return hBars(it,{W, empty:'Sin alertas'});
+}
+/* "APELLIDOS, NOMBRES" o "AP. PATERNO AP. MATERNO NOMBRES" -> [apellidos, nombres] */
+function partirNombre(t){
+  t = String(t||'').trim().replace(/\s+/g,' ');
+  if (t.includes(',')){ const [a,...b]=t.split(','); return [a.trim(), b.join(',').trim()]; }
+  const w = t.split(' ');
+  return w.length >= 3 ? [w.slice(0,2).join(' '), w.slice(2).join(' ')] : [t, ''];
+}
+function topOps(d, n=10, W=540){
+  const cmSegs = rs => ['Crítico','Moderado'].map(nv=>({n:nv, c:NIV_COL[nv], v:count(rs,r=>r.nivel===nv)}));
+  return hBars(rankingCM(d).slice(0,n).map(o=>{ const [ap,no]=partirNombre(o.op); return {label:ap, label2:(no?no+' · ':'')+o.eq, segs:cmSegs(d.filter(r=>r.oper===o.op))}; }), {W, empty:'Sin alertas críticas ni moderadas'});
+}
+const LEG_CM = legendHTML([['Crítico',NIV_COL['Crítico']],['Moderado',NIV_COL['Moderado']]]) ;
+function topOpsTurnos(d, n=6, W=470, gD='', gN=''){
+  const dd = d.filter(r=>r.turno==='Día'), dn = d.filter(r=>r.turno==='Noche');
+  return `
+    <div class="turno-tit">Turno día${gD?' · Guardia '+gChip(gD):''}</div>${topOps(dd,n,W)}
+    <div class="turno-tit">Turno noche${gN?' · Guardia '+gChip(gN):''}</div>${topOps(dn,n,W)}${LEG_CM}`;
+}
+function guardBars(d, W=420, rol=null){
+  const lab = g => 'Guardia '+g+(rol && rol[g] ? ' · '+rol[g] : '');
+  return hBars(['A','B','C'].map(g=>({label:lab(g), segs:nivelSegs(d.filter(r=>r.g===g))})), {W, rowH:30});
+}
+const rolDe = f => { const gD=S.data.rol(f,'Día'), gN=S.data.rol(f,'Noche'), o={}; o[gD]='Día'; o[gN]='Noche'; o['ABC'.replace(gD,'').replace(gN,'')]='Descanso'; return o; };
+
+/* ================= Piezas de hoja ================= */
+const NOTA_DATA = '<div class="nota-data">Nota: la información registrada está disponible desde el 21/11/2026.</div>';
+function fechaCard(){
+  const t = S.tipo, M = s => MES3[dDate(s).getUTCMonth()].toUpperCase(), Dn = s => dDate(s).getUTCDate(), Y = s => dDate(s).getUTCFullYear();
+  const rango = (a,b) => M(a)===M(b) ? `${Dn(a)}–${Dn(b)} ${M(b)}` : `${Dn(a)} ${M(a)}–${Dn(b)} ${M(b)}`;
+  let top, big, bot;
+  if (t==='semanal'){ const i=weekStart(S.fecha); top='SEMANA'; big=rango(i,i+6); bot=String(Y(i+6)); }
+  else if (t==='mensual'){ const m=rangoMes(S.fecha); top='MES'; big=MES_L[dDate(m.ini).getUTCMonth()].toUpperCase(); bot=String(Y(m.ini)); }
+  else if (t==='operador'){ top='PERIODO'; big=rango(S.desde,S.hasta); bot=String(Y(S.hasta)); }
+  else { const f=S.fecha; top=DIAS[wd(f)].toUpperCase(); big=`${Dn(f)} ${M(f)}`; bot=Y(f)+(t==='dia'?' · TURNO DÍA':t==='noche'?' · TURNO NOCHE':''); }
+  return `<div class="fcard"><span>${top}</span><b>${big}</b><i>${bot}</i></div>`;
+}
+function head(titulo, sub, meta){
+  return `<div class="sh-head"><div class="logo"><img src="${LOGO}" alt="CHEC"></div><div class="t">${fechaCard()}<div class="tt"><h2>${titulo}</h2><p>${sub}</p></div></div><div class="meta">${meta}</div></div>`;
+}
+function foot(){ return ''; }
+function kpiRow(k, extra=[]){
+  const items = [['Alertas', k.total, '#1F3E9C'], ['Críticas', k.crit, '#D64545'], ['Eventos de fatiga', k.fat, '#F0A04B', 'bostezo frec. + conducción'],
+    ['Operadores con alerta', k.ops, '#0F8B8D'], ['Comunicadas ≤ 2 min', k.ok2==null?'-':Math.round(k.ok2*100)+'%', k.ok2!=null&&k.ok2<0.8?'#D64545':'#2E7D32', k.prom==null?'':'prom. '+k.prom.toFixed(1)+' min'], ...extra];
+  return `<div class="kpis" style="--n:${items.length}">`+items.map(([l,v,c,i])=>`<div class="kpi" style="--k:${c}"><span>${l}</span><b>${v}</b>${i?`<i>${i}</i>`:''}</div>`).join('')+'</div>';
+}
+function nivPill(n){ return `<span class="pill" style="background:${NIV_COL[n]}22;color:${n==='Leve'?'#2E7D32':n==='Condición del sistema'?'#5E6779':NIV_COL[n]}">${esc(n)}</span>`; }
+function gChip(g){ return g?`<span class="chip g${g}">${g}</span>`:''; }
+function tablaRanking(d, n=15){
+  const r = rankingCM(d).slice(0,n); if(!r.length) return '<div class="empty">Sin alertas críticas ni moderadas</div>';
+  const max = r[0].cm;
+  return `<table class="t"><thead><tr><th>#</th><th class="l">Operador</th><th>Guardia</th><th>Equipo</th><th class="l">Críticas + moderadas</th><th>Crítico</th><th>Moderado</th><th>Eventos fatiga</th><th>Turno día</th><th>Turno noche</th><th>Otras alertas</th></tr></thead><tbody>`+
+    r.map((o,i)=>`<tr class="${o.fat>=UMBRAL_REINC?'crit':''}"><td>${i+1}</td><td class="l">${esc(o.op)}${o.reem?' <span class="nota">(reemplazo)</span>':''}</td><td>${gChip(o.g)}</td><td>${esc(o.eq)}</td><td class="l"><div class="bar-cell"><span style="width:${Math.round(o.cm/max*70)}px"></span><b>${o.cm}</b></div></td><td>${o['Crítico']||''}</td><td>${o['Moderado']||''}</td><td><b>${o.fat||''}</b></td><td>${o.cmDia||''}</td><td>${o.cmNoche||''}</td><td class="nota">${o.otras?'+'+o.otras:''}</td></tr>`).join('')+'</tbody></table>'+
+    '<div class="nota">Solo cuentan las alertas críticas y moderadas. «Otras alertas» = leves, conductas inseguras y condiciones del sistema del mismo operador.</div>';
+}
+function tablaAlertas(d, {max=60, conOper=true}={}){
+  if(!d.length) return '<div class="empty">Sin alertas</div>';
+  const rows = d.slice(0,max);
+  const sino = v => v ? `<span style="color:${norm(v)==='si'?'#2E7D32':norm(v)==='no'?'#C62828':'#5E6779'};font-weight:600">${esc(v)}</span>` : '<span class="nota">-</span>';
+  return `<table class="t"><thead><tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>Guardia</th><th>Equipo</th>${conOper?'<th class="l">Operador</th>':''}<th class="l">Tipo de alerta</th><th>Nivel</th><th>Comunicado a</th><th>Min. a comunicar</th><th>Pausa activa</th><th>Seguim. 30 min</th><th class="l">Acción adoptada</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr class="${r.nivel==='Crítico'?'crit':''}"><td style="white-space:nowrap">${fmtS(r.f)}</td><td>${hhmm(r.m)}</td><td>${r.turno}</td><td>${gChip(r.g)}</td><td>${esc(r.eq)}</td>${conOper?`<td class="l">${esc(r.oper)}</td>`:''}<td class="l">${esc(r.tipo)}</td><td>${nivPill(r.nivel)}</td><td>${esc(r.com)}</td><td style="color:${r.minCom>2?'#C62828':'inherit'};font-weight:${r.minCom>2?700:400}">${r.minCom==null?'-':r.minCom}</td><td>${esc(r.pausa)||'<span class="nota">-</span>'}</td><td>${sino(r.seg)}</td><td class="l" style="font-size:10px">${esc(r.acc)}${r.obs?`<br><i class="nota">${esc(r.obs)}</i>`:''}</td></tr>`).join('')+
+    '</tbody></table>'+(d.length>max?`<div class="nota">Se muestran ${max} de ${d.length} alertas. El detalle completo está en «Datos (CSV)».</div>`:'');
+}
+function reincidentes(d){
+  return ranking(d).filter(o=>o.fat>=UMBRAL_REINC);
+}
+
+/* ================= Tarjetas y resúmenes ================= */
+function typeCards(d, compact=false){
+  return `<div class="tcards${compact?' compact':''}">` + S.data.tipos.map(t=>{
+    const n = count(d,r=>r.tipo===t), nv = S.data.matriz[t] || 'Sin clasificar';
+    return `<div class="tcard${n?'':' zero'}" style="--k:${NIV_COL[nv]}"><span>${esc(t)}</span><b>${n}</b><i>${esc(nv)}</i></div>`;
+  }).join('') + '</div>';
+}
+function resumen(d){
+  const k = kpis(d);
+  const pv = count(d,r=>norm(r.pausa)==='voluntaria'), po = count(d,r=>norm(r.pausa)==='obligatoria');
+  const parts = [`<b>${k.total}</b> alertas`, `<b>${k.crit}</b> críticas`, `<b>${count(d,r=>r.nivel==='Moderado')}</b> moderadas`, `<b>${k.fat}</b> eventos de fatiga`,
+    `<b>${k.ops}</b> operadores con alerta`, `comunicadas en ≤ 2 min: <b>${k.ok2==null?'-':Math.round(k.ok2*100)+'%'}</b>${k.prom==null?'':' (prom. '+k.prom.toFixed(1)+' min)'}`];
+  if (pv || po) parts.push(`pausas activas: <b>${po}</b> obligatorias · <b>${pv}</b> voluntarias`);
+  return `<div class="resumen">${parts.join('<span class="sep">|</span>')}</div>`;
+}
+function headMeta(extra, total){
+  return `${extra}<span class="tot">Total: <b>${total}</b> alertas</span>`;
+}
+function nivelBars(d, W=420){
+  return hBars(NIVELES.map(n=>({label:n, segs:[{n, c:NIV_COL[n], v:count(d,r=>r.nivel===n)}]})), {W, rowH:26});
+}
+const critMod = d => d.filter(r=>r.nivel==='Crítico' || r.nivel==='Moderado');
+const tituloTurno = (f, fg) => f==='Día' ? 'TURNO DÍA' : f==='Noche' ? 'TURNO NOCHE' : '';
+function datosTurno(fg, filtro){
+  const D = S.data; const d0 = D.recs.filter(r=>r.fg===fg); const d = filtro ? d0.filter(r=>r.turno===filtro) : d0;
+  const gD = D.rol(fg,'Día'), gN = D.rol(fg,'Noche'), gR = 'ABC'.replace(gD,'').replace(gN,'');
+  const rango = filtro==='Día' ? `07:00 a 19:00` : filtro==='Noche' ? `${fmtS(fg)} 19:00 a ${fmtS(fg+1)} 07:00` : `${fmtS(fg)} 07:00 a ${fmtS(fg+1)} 07:00 · turno día y noche`;
+  const meta = filtro ? `<span>Guardia en turno</span><b style="font-size:20px">${gChip(filtro==='Día'?gD:gN)} Guardia ${filtro==='Día'?gD:gN}</b>`
+                      : `<span>Día ${gChip(gD)} · Noche ${gChip(gN)}</span><span>Descanso ${gChip(gR)}</span>`;
+  const horas = filtro==='Día' ? horasCols(d,0,12) : filtro==='Noche' ? horasCols(d,12,12) : horasCols(d,0,24);
+  return {d, rango, meta, horas, gD, gN};
+}
+
+/* ================= Vista de presentación (1 hoja) ================= */
+const durTxt = m => m==null ? '-' : m<60 ? `${Math.round(m)} min` : `${Math.floor(m/60)} h ${String(Math.round(m%60)).padStart(2,'0')} min`;
+const sumDet = rs => rs.reduce((a,r)=>a+(r.det||0),0);
+const accCorta = a => String(a||'').replace(/\s*Seguimiento por cámara[^.]*\./gi,'').trim();
+function accionesBox(d, {rol=null}={}){
+  const cm = critMod(d), T = 'Protocolo de seguimiento por guardia y operador';
+  if (!cm.length) return `<div class="box prot"><h3>${T}</h3><div class="nota">Sin alertas críticas ni moderadas en el periodo.</div></div>`;
+  const varios = S.tipo==='operador' || (new Set(cm.map(r=>r.f)).size > 1 && (S.tipo==='semanal'||S.tipo==='mensual'));
+  const orden = (rol ? ['A','B','C'].sort((a,b)=>({Día:0,Noche:1,Descanso:2}[rol[a]]??3)-({Día:0,Noche:1,Descanso:2}[rol[b]]??3)) : ['A','B','C']).filter(g=>cm.some(r=>r.g===g));
+  const C3 = orden.length >= 3;
+  const thead = `<thead><tr><th>Hora</th>${C3?'<th class="l">Alerta y protocolo aplicado</th>':'<th class="l">Alerta</th><th class="l">Protocolo aplicado</th>'}</tr></thead>`;
+  const gHead = (g, rg) => `<div class="acc-g">${gChip(g)} Guardia ${g}${rol&&rol[g]?' · Turno '+rol[g].toLowerCase():''} <span class="cnt">· ${rg.length} alertas</span></div>`;
+  const bloques = rg => rankingCM(rg).map((o,k)=>{
+    const rs = rg.filter(r=>r.oper===o.op).sort((a,b)=>(a.f-b.f)||(a.m-b.m));
+    let h = `<tr class="op" data-o="${k}"><td class="l" colspan="${C3?2:3}"><b>${esc(o.op)}</b> <span class="nota">· ${esc(o.eq)}${rs.length>1?' · '+rs.length+' alertas':''}</span></td></tr>`;
+    rs.forEach(r=>{
+      const hora = (varios?`<span class="nota">${String(dDate(r.f).getUTCDate()).padStart(2,'0')}/${String(dDate(r.f).getUTCMonth()+1).padStart(2,'0')}</span> `:'')+`<b>${hhmm(r.m)}</b>`;
+      const al = `<span class="dot" style="background:${tipoCol(r.tipo)}"></span>${esc(r.tipo)}`, pr = r.acc ? esc(accCorta(r.acc)) : '<i style="color:#C62828">Sin registrar</i>';
+      h += C3 ? `<tr data-o="${k}" data-a="1"><td style="white-space:nowrap">${hora}</td><td class="l"><b class="al">${al}</b><br>${pr}</td></tr>`
+              : `<tr data-o="${k}" data-a="1"><td style="white-space:nowrap">${hora}</td><td class="l">${al}</td><td class="l">${pr}</td></tr>`;
+    });
+    return {h, n: rs.length + 1};
+  });
+  const col = (head, bl) => `<div class="acc-col">${head}<table class="t">${thead}<tbody>${bl.map(b=>b.h).join('')}</tbody></table><div class="nota acc-mas"></div></div>`;
+  let cols, nCols;
+  if (orden.length === 1){
+    // una sola guardia (reporte de turno): los operadores se reparten en 2 columnas
+    const g = orden[0], rg = cm.filter(r=>r.g===g), bl = bloques(rg), tot = bl.reduce((a,b)=>a+b.n,0);
+    let acc = 0, cut = bl.length;
+    for (let k=0;k<bl.length;k++){ if (acc + bl[k].n/2 >= tot/2){ cut = k; break; } acc += bl[k].n; }
+    if (cut === 0 && bl.length > 1) cut = 1;
+    const a = bl.slice(0,cut), b = bl.slice(cut);
+    cols = gHead(g, rg).replace('class="acc-g"','class="acc-g" style="grid-column:1/-1"') + col('', a) + (b.length ? col('', b) : '<div></div>');
+    nCols = 2;
+  } else {
+    cols = orden.map(g=>{ const rg = cm.filter(r=>r.g===g); return col(gHead(g, rg), bloques(rg)); }).join('');
+    nCols = Math.min(orden.length,3);
+  }
+  return `<div class="box prot"><h3>${T}</h3><div class="sub">Solo alertas críticas y moderadas</div><div class="acc-cols" style="grid-template-columns:repeat(${nCols},1fr)${orden.length===1?';grid-template-rows:auto 1fr':''}">${cols}</div></div>`;
+}
+/* presentación: quita operadores del final de cada columna hasta que entre en la hoja */
+function ajustarAcciones(){
+  document.querySelectorAll('#out .sheet.pres .acc-col').forEach(col=>{
+    const nota = col.querySelector('.acc-mas'); let qo = 0, qa = 0;
+    const msg = () => nota.textContent = [qo?`${qo} operador${qo>1?'es':''}`:'', qa?`${qa} alerta${qa>1?'s':''}`:''].filter(Boolean).join(' y ')+' más: ver el reporte detallado.';
+    while (col.scrollHeight > col.clientHeight + 1){
+      const filas = [...col.querySelectorAll('tr[data-o]')]; const ks = [...new Set(filas.map(f=>+f.dataset.o))];
+      if (ks.length > 1){ const ult = Math.max(...ks); filas.filter(f=>+f.dataset.o===ult).forEach(f=>f.remove()); qo++; }
+      else { const al = filas.filter(f=>f.dataset.a); if (al.length <= 1) break; al[al.length-1].remove(); qa++; }
+      msg();
+    }
+  });
+}
+
+const MATRIZ_DIF = [ // alerta, radio al operador, comunicar a, pausa / medida
+  ['Conducción con fatiga','Detención inmediata en zona segura','O1, O2 o SSOMA (prioridad)','Pausa activa obligatoria 5-10 min · declaración SSOMA'],
+  ['Conducción con fatiga reiterada','Detención inmediata del equipo','O1, O2 y SSOMA','Relevo del operador; sin reemplazo: equipo detenido y pausa de sueño · declaración SSOMA'],
+  ['Uso de celular','—','O1 u O2 y SSOMA, de inmediato','Intervención al operador'],
+  ['Sin uso de cinturón de seguridad','—','O1 u O2 y SSOMA, de inmediato','Intervención al operador'],
+  ['Bostezo frecuente','Estacionar en zona segura','O1 u O2','Pausa activa obligatoria 5-10 min'],
+  ['Bostezo','Confirmar su estado; puede continuar','—','Pausa activa voluntaria si la solicita'],
+  ['Distracción','Informar la conducta observada','—','—'],
+  ['Fumar en cabina','—','SSOMA u O1','Medidas según el Reglamento Interno de Seguridad'],
+  ['Cámara obstruida','Retirar la obstrucción','O1 u O2, si persiste','Si se repite: reportar posible manipulación'],
+  ['Conductor no detectado','Ubicarse frente a la cámara','O1 u O2, si persiste','—'],
+];
+function matrizBox(d){
+  const filas = MATRIZ_DIF.map(([t,ra,co,me])=>{
+    const nv = S.data.matriz[t] || '', n = count(d,r=>r.tipo===t);
+    return `<tr${n?'':' style="color:#9AA2B1"'}><td class="l"><span class="dot" style="background:${tipoCol(t)}"></span><b>${esc(t)}</b></td><td>${nv?nivPill(nv):''}</td><td><b>${n}</b></td><td class="l">${esc(ra)}</td><td class="l">${esc(co)}</td><td class="l">${esc(me)}</td></tr>`;
+  }).join('');
+  return `<div class="box prot"><h3>Matriz de respuesta ante alertas E-Mine</h3><div class="sub">Protocolo por tipo de alerta · Cant. = alertas del mes · seguimiento por cámara 30 min en moderadas y críticas</div><table class="t"><thead><tr><th class="l">Alerta</th><th>Nivel</th><th>Cant.</th><th class="l">Radio al operador</th><th class="l">Comunicar a</th><th class="l">Pausa / medida</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+function presSheet(titulo, sub, meta, d, izq, der, abajoIzq, nota, rol, abajoDer){
+  let h = `<section class="sheet pres">${head(titulo, sub, meta)}${nota||''}${typeCards(d, true)}`;
+  if (!d.length) return h + `<div class="empty">No hay alertas registradas en el periodo.</div>${foot()}</section>`;
+  return h + `<div class="pres-r1">${izq}${der}</div><div class="pres-r2">${abajoIzq}${abajoDer || accionesBox(d,{rol})}</div>${foot()}</section>`;
+}
+function presTurnos(fg, filtro){
+  const {d, rango, meta, horas} = datosTurno(fg, filtro);
+  return presSheet('ALERTAS DEL SISTEMA ANTIFATIGA'+(filtro?' · '+tituloTurno(filtro, fg):''), rango, headMeta(meta, d.length), d,
+    `<div class="box"><h3>Alertas por hora y tipo</h3>${vCols(horas,{W:900,H:250, highlight:(c,i)=>!filtro && i>=12})}${legTipos(d)}</div>`,
+    `<div class="box"><h3>Alertas por guardia y nivel</h3>${guardBars(d,420,rolDe(fg))}${LEG_NIV}</div>`,
+    `<div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${filtro ? topOps(d,10,470)+LEG_CM : topOpsTurnos(d,5,470,datosTurno(fg,null).gD,datosTurno(fg,null).gN)}</div>`, '', rolDe(fg))
+}
+function presSemanal(fecha){
+  const D = S.data; const ini = weekStart(fecha), fin = ini+6;
+  const d = D.recs.filter(r=>r.fg>=ini && r.fg<=fin);
+  const meta = `<span>Día ${gChip(D.rol(ini,'Día'))} · Noche ${gChip(D.rol(ini,'Noche'))}</span><span>Descanso ${gChip('ABC'.replace(D.rol(ini,'Día'),'').replace(D.rol(ini,'Noche'),''))}</span>`;
+  return presSheet('ALERTAS DEL SISTEMA ANTIFATIGA · SEMANA', `${fmtS(ini)} 07:00 al ${fmtY(fin+1)} 07:00`, headMeta(meta, d.length), d,
+    `<div class="box"><h3>Alertas por día y turno</h3><div class="sub">Por fecha: barra izquierda = turno día, barra derecha (fondo gris) = turno noche. La letra es la guardia.</div>${vCols(colsSemana(d,ini),{W:900,H:240, highlight:(c,i)=>i%2===1})}${LEG_NIV}</div>`,
+    `<div class="box"><h3>Comparación por guardia</h3>${guardBars(d,420,rolDe(ini))}</div>`,
+    `<div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${topOpsTurnos(d,5,470,D.rol(ini,'Día'),D.rol(ini,'Noche'))}</div>`, NOTA_DATA, rolDe(ini));
+}
+function presOperador(nombre, desde, hasta){
+  const D = S.data; const d = D.recs.filter(r=>r.oper===nombre && r.fg>=desde && r.fg<=hasta); const inf = D.infoOp[nombre] || {};
+  const meta = `<span>Guardia ${gChip(inf.g)}</span><span>Camión <b>${esc(inf.e||'-')}</b></span>`;
+  const dias = [...new Set(d.map(r=>r.fg))].sort((a,b)=>a-b);
+  const colsT = dias.map(s=>({label:fmtS(s), segs:tipoSegs(d.filter(r=>r.fg===s))}));
+  return presSheet('OPERADOR · '+esc(nombre), `${fmtS(desde)} al ${fmtY(hasta)}`, headMeta(meta, d.length), d,
+    `<div class="box"><h3>Alertas por día y tipo</h3><div class="sub">Solo los días con alertas</div>${vCols(colsT,{W:900,H:240, rotate:colsT.length>16, segLabels:true})}${legTipos(d)}</div>`,
+    `<div class="box"><h3>Alertas por nivel</h3>${nivelBars(d,420)}</div>`,
+    `<div class="box"><h3>Alertas por hora</h3>${vCols(horasCols(d),{W:470,H:230,rotate:true})}</div>`);
+}
+
+/* ================= Reporte detallado (PDF para correo) ================= */
+function colsSemana(d, ini){
+  const D = S.data, cols = [];
+  for (let s=ini; s<=ini+6; s++) ['Día','Noche'].forEach(t=>{
+    cols.push({label:'', sub:D.rol(s,t), group: t==='Día' ? fmtC(s) : null, segs:nivelSegs(d.filter(r=>r.fg===s && r.turno===t))});
+  });
+  return cols;
+}
+function colsOperador(d, desde, hasta){
+  const n = Math.min(hasta-desde+1, 62), s0 = hasta-n+1;
+  return [...Array(n)].map((_,i)=>{const s=s0+i; return {label: n>20 ? fmtC(s) : fmtS(s).slice(4), segs:nivelSegs(d.filter(r=>r.fg===s))};});
+}
+function repTurnos(fg, filtro){
+  const {d, rango, meta, horas} = datosTurno(fg, filtro);
+  const titulo = 'REPORTE DETALLADO'+(filtro?' · '+tituloTurno(filtro, fg):'');
+  let h1 = `<section class="sheet">${head(titulo, rango, headMeta(meta, d.length))}${typeCards(d, true)}${resumen(d)}`;
+  if (!d.length) return h1 + `<div class="empty">No hay alertas registradas para este ${filtro?'turno':'día'}.</div>${foot(1)}</section>`;
+  h1 += `<div class="box"><h3>Alertas por hora</h3><div class="sub">Cada barra es una hora del ${filtro?'turno':'día de guardia (07:00 → 07:00)'}, apilada por tipo de alerta.</div>${vCols(horas,{H:190, highlight:(c,i)=>!filtro && i>=12})}${legTipos(d)}</div>
+    <div class="grid3"><div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${filtro ? topOps(d,10,560)+LEG_CM : topOpsTurnos(d,5,560)}</div>
+    <div class="box"><h3>Alertas por guardia</h3>${guardBars(d,440,rolDe(fg))}</div></div>${foot(1)}</section>`;
+  const cm = critMod(d);
+  let h2 = `<section class="sheet">${head(titulo+' · DETALLE', rango, headMeta(meta, d.length))}
+    <div class="box"><h3>Ranking de operadores</h3><div class="sub">Solo alertas críticas y moderadas. Fila en rojo: ${UMBRAL_REINC} o más eventos de fatiga en el ${filtro?'turno':'día'}.</div>${tablaRanking(d,15)}</div>
+    ${accionesBox(d,{rol:rolDe(fg)})}
+    <div class="box"><h3>Alertas críticas y moderadas (${cm.length})</h3>${tablaAlertas(cm,{max:30})}</div>${foot(2)}</section>`;
+  return h1 + h2;
+}
+function repSemanal(fecha){
+  const D = S.data; const ini = weekStart(fecha), fin = ini+6;
+  const d = D.recs.filter(r=>r.fg>=ini && r.fg<=fin);
+  const sub = `${fmtS(ini)} 07:00 al ${fmtY(fin+1)} 07:00`;
+  const meta = headMeta(`<span>Día ${gChip(D.rol(ini,'Día'))} · Noche ${gChip(D.rol(ini,'Noche'))}</span><span>Descanso ${gChip('ABC'.replace(D.rol(ini,'Día'),'').replace(D.rol(ini,'Noche'),''))}</span>`, d.length);
+  const reinc = reincidentes(d);
+  let h = `<section class="sheet">${head('REPORTE DETALLADO · SEMANA', sub, meta)}${NOTA_DATA}${typeCards(d, true)}${resumen(d)}`;
+  if (!d.length) return h + `<div class="empty">No hay alertas en esta semana.</div>${foot(1)}</section>`;
+  h += `<div class="box"><h3>Alertas por día y turno</h3><div class="sub">Por fecha: barra izquierda = turno día, barra derecha (fondo gris) = turno noche. La letra es la guardia.</div>${vCols(colsSemana(d,ini),{H:200, highlight:(c,i)=>i%2===1})}${LEG_NIV}</div>
+    <div class="box"><h3>Mapa de calor: día × hora</h3><div class="sub">La línea punteada separa el turno día (07–19) del turno noche (19–07).</div>${heat([...Array(7)].map((_,i)=>{const s=ini+i; return {label:fmtS(s), vals:[...Array(24)].map((_,j)=>count(d,r=>r.fg===s && Math.floor(r.m/60)===(j+7)%24))};}))}</div>${foot(1)}</section>`;
+  const eqs = [...groupBy(d,'eq')].map(([e,rs])=>({label:e, segs:nivelSegs(rs)})).sort((a,b)=>b.segs.reduce((x,s)=>x+s.v,0)-a.segs.reduce((x,s)=>x+s.v,0)).slice(0,10);
+  h += `<section class="sheet">${head('REPORTE DETALLADO · OPERADORES Y EQUIPOS', sub, meta)}
+    <div class="grid3"><div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${topOpsTurnos(d,6,560,D.rol(ini,'Día'),D.rol(ini,'Noche'))}</div>
+    <div class="box"><h3>Comparación por guardia</h3>${guardBars(d,440,rolDe(ini))}</div></div>
+    <div class="grid2"><div class="box"><h3>Camiones con más alertas</h3><div class="sub">Top 10</div>${hBars(eqs,{W:500,rowH:19})}</div>
+    <div class="box"><h3>Alertas por nivel</h3>${nivelBars(d,500)}</div></div>${foot(2)}</section>`;
+  h += `<section class="sheet">${head('REPORTE DETALLADO · RANKING Y REINCIDENTES', sub, meta)}
+    <div class="box"><h3>Ranking de operadores</h3><div class="sub">Fila en rojo: ${UMBRAL_REINC} o más eventos de fatiga (bostezo frecuente, conducción con fatiga o reiterada) en la semana.</div>${tablaRanking(d,20)}</div>
+    <div class="box"><h3>Operadores reincidentes</h3>${reinc.length?`<table class="t"><thead><tr><th class="l">Operador</th><th>Guardia</th><th>Equipo</th><th>Eventos de fatiga</th><th>Días con evento</th><th>Último evento</th></tr></thead><tbody>${reinc.map(o=>{const rs=d.filter(r=>r.oper===o.op&&r.fat); return `<tr class="crit"><td class="l">${esc(o.op)}</td><td>${gChip(o.g)}</td><td>${esc(o.eq)}</td><td><b>${o.fat}</b></td><td>${new Set(rs.map(r=>r.fg)).size}</td><td>${fmtS(Math.max(...rs.map(r=>r.fg)))}</td></tr>`;}).join('')}</tbody></table>`:`<div class="nota">Ningún operador llegó a ${UMBRAL_REINC} eventos de fatiga esta semana.</div>`}</div>${foot(3)}</section>`;
+  const cm = critMod(d);
+  h += `<section class="sheet">${head('REPORTE DETALLADO · ALERTAS CRÍTICAS Y MODERADAS', sub, meta)}${accionesBox(d,{rol:rolDe(ini)})}<div class="box"><h3>Alertas críticas y moderadas de la semana (${cm.length})</h3>${tablaAlertas(cm,{max:40})}</div>${foot(4)}</section>`;
+  return h;
+}
+function repOperador(nombre, desde, hasta){
+  const D = S.data; const d = D.recs.filter(r=>r.oper===nombre && r.fg>=desde && r.fg<=hasta);
+  const inf = D.infoOp[nombre] || {};
+  const sub = `${fmtS(desde)} al ${fmtY(hasta)} (fecha de guardia)`;
+  const meta = headMeta(`<span>Guardia ${gChip(inf.g)}</span><span>Camión <b>${esc(inf.e||'-')}</b></span>`, d.length);
+  let h = `<section class="sheet">${head('REPORTE DETALLADO · '+esc(nombre), sub, meta)}${typeCards(d, true)}${resumen(d)}`;
+  if (!d.length) return h + `<div class="empty">Este operador no tiene alertas en el rango.</div>${foot(1)}</section>`;
+  h += `<div class="box"><h3>Alertas por día</h3><div class="sub">Fecha de guardia</div>${vCols(colsOperador(d,desde,hasta),{H:190, rotate:(hasta-desde)>20})}${LEG_NIV}</div>
+    <div class="grid2"><div class="box"><h3>Alertas por hora</h3><div class="sub">07:00 → 06:00</div>${vCols(horasCols(d),{W:500,H:200,rotate:true})}${legTipos(d)}</div>
+    <div class="box"><h3>Alertas por nivel</h3>${nivelBars(d,500)}</div></div>${foot(1)}</section>`;
+  const cm = critMod(d);
+  const dias = [...new Set(d.map(r=>r.fg))].sort((a,b)=>a-b);
+  const colsT = dias.map(s=>({label:fmtS(s), segs:tipoSegs(d.filter(r=>r.fg===s))}));
+  const tiposOp = S.data.tipos.filter(t=>d.some(r=>r.tipo===t));
+  const tablaDT = `<table class="t"><thead><tr><th class="l">Día (guardia)</th><th>Turno</th>${tiposOp.map(t=>`<th>${esc(t)}</th>`).join('')}<th>Total</th></tr></thead><tbody>`+
+    dias.map(s=>{const rs=d.filter(r=>r.fg===s); const tu=[...new Set(rs.map(r=>r.turno))].join(' / '); return `<tr><td class="l" style="white-space:nowrap">${fmtS(s)}</td><td>${tu}</td>${tiposOp.map(t=>{const n=count(rs,r=>r.tipo===t); return `<td style="${n?'font-weight:700;color:'+tipoCol(t):''}">${n||''}</td>`;}).join('')}<td><b>${rs.length}</b></td></tr>`;}).join('')+
+    `<tr><td class="l"><b>Total</b></td><td></td>${tiposOp.map(t=>`<td><b>${count(d,r=>r.tipo===t)}</b></td>`).join('')}<td><b>${d.length}</b></td></tr></tbody></table>`;
+  h += `<section class="sheet">${head('REPORTE DETALLADO · '+esc(nombre)+' · REPORTES POR DÍA', sub, meta)}
+    <div class="box"><h3>Reportes por día y tipo de alerta</h3><div class="sub">Solo los días con alertas (fecha de guardia). Cada barra muestra cuántas alertas tuvo el operador ese día, dividida por tipo.</div>${vCols(colsT,{H:230, rotate:colsT.length>16, segLabels:true})}${legTipos(d)}</div>
+    <div class="box"><h3>Detalle por día</h3>${tablaDT}</div>${foot(2)}</section>`;
+  h += `<section class="sheet">${head('REPORTE DETALLADO · '+esc(nombre)+' · DETALLE', sub, meta)}<div class="box"><h3>Alertas críticas y moderadas (${cm.length})</h3>${cm.length?tablaAlertas(cm,{max:45,conOper:false}):'<div class="nota">El operador no tiene alertas críticas ni moderadas en el rango.</div>'}</div>${foot(3)}</section>`;
+  return h;
+}
+
+
+/* ================= Mensual ================= */
+const MES_L = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function rangoMes(f){ const d=dDate(f); const y=d.getUTCFullYear(), m=d.getUTCMonth(); const ini=Math.round((Date.UTC(y,m,1)-EPOCH)/MS), fin=Math.round((Date.UTC(y,m+1,1)-EPOCH)/MS)-1; return {ini, fin, nombre:`${MES_L[m]} ${y}`}; }
+function colsMes(d, ini, fin){ const c=[]; for(let s=ini;s<=fin;s++) c.push({label:String(dDate(s).getUTCDate()), segs:nivelSegs(d.filter(r=>r.fg===s))}); return c; }
+function tablaSemanasMes(d, ini, fin){
+  const filas=[]; for(let w=weekStart(ini); w<=fin; w+=7){ const a=Math.max(w,ini), b=Math.min(w+6,fin); const rs=d.filter(r=>r.fg>=a&&r.fg<=b); const cm=critMod(rs);
+    filas.push(`<tr><td class="l" style="white-space:nowrap">${fmtC(w)} al ${fmtC(w+7)}</td><td>${rs.length}</td><td>${count(rs,r=>r.nivel==='Crítico')}</td><td>${count(rs,r=>r.nivel==='Moderado')}</td><td>${count(rs,r=>r.fat)}</td><td>${new Set(cm.map(r=>r.oper)).size}</td><td>${count(rs,r=>norm(r.pausa)==='obligatoria')}</td></tr>`); }
+  return `<table class="t"><thead><tr><th class="l">Semana (mié 07:00 a mié)</th><th>Alertas</th><th>Críticas</th><th>Moderadas</th><th>Eventos de fatiga</th><th>Operadores con crít./mod.</th><th>Pausas obligatorias</th></tr></thead><tbody>${filas.join('')}</tbody></table>`;
+}
+function presMensual(fecha){
+  const {ini, fin, nombre} = rangoMes(fecha); const d = S.data.recs.filter(r=>r.fg>=ini && r.fg<=fin);
+  return presSheet('ALERTAS DEL SISTEMA ANTIFATIGA · MES', `Del ${fmtS(ini)} al ${fmtY(fin)} (fecha de guardia)`, headMeta('<span>Reporte mensual</span>', d.length), d,
+    `<div class="box"><h3>Alertas por día del mes</h3>${vCols(colsMes(d,ini,fin),{W:900,H:240})}${LEG_NIV}</div>`,
+    `<div class="box"><h3>Comparación por guardia</h3>${guardBars(d,420)}</div>`,
+    `<div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${topOpsTurnos(d,5,470)}</div>`, NOTA_DATA, null, matrizBox(d));
+}
+function repMensual(fecha){
+  const {ini, fin, nombre} = rangoMes(fecha); const d = S.data.recs.filter(r=>r.fg>=ini && r.fg<=fin);
+  const sub = `Del ${fmtS(ini)} al ${fmtY(fin)} (fecha de guardia)`, meta = headMeta('<span>Reporte mensual</span>', d.length);
+  let h = `<section class="sheet">${head('REPORTE DETALLADO · MES', sub, meta)}${NOTA_DATA}${typeCards(d, true)}${resumen(d)}`;
+  if (!d.length) return h + `<div class="empty">No hay alertas en este mes.</div></section>`;
+  h += `<div class="box"><h3>Alertas por día del mes</h3>${vCols(colsMes(d,ini,fin),{H:200})}${LEG_NIV}</div>
+    <div class="box"><h3>Resumen por semana</h3>${tablaSemanasMes(d,ini,fin)}</div></section>`;
+  h += `<section class="sheet">${head('REPORTE DETALLADO · MES'+' · OPERADORES Y GUARDIAS', sub, meta)}
+    <div class="grid3"><div class="box"><h3>Operadores con mayor número de alertas críticas y moderadas</h3>${topOpsTurnos(d,6,560)}</div>
+    <div class="box"><h3>Comparación por guardia</h3>${guardBars(d,440)}<h3 style="margin-top:10px">Alertas por nivel</h3>${nivelBars(d,440)}</div></div></section>`;
+  const reinc = reincidentes(d);
+  h += `<section class="sheet">${head('REPORTE DETALLADO · MES'+' · RANKING', sub, meta)}
+    <div class="box"><h3>Ranking de operadores (críticas y moderadas)</h3><div class="sub">Fila en rojo: ${UMBRAL_REINC} o más eventos de fatiga en el mes.</div>${tablaRanking(d,25)}</div>
+    <div class="box"><h3>Operadores reincidentes</h3>${reinc.length?`<table class="t"><thead><tr><th class="l">Operador</th><th>Guardia</th><th>Equipo</th><th>Eventos de fatiga</th><th>Días con evento</th><th>Último evento</th></tr></thead><tbody>${reinc.map(o=>{const rs=d.filter(r=>r.oper===o.op&&r.fat); return `<tr class="crit"><td class="l">${esc(o.op)}</td><td>${gChip(o.g)}</td><td>${esc(o.eq)}</td><td><b>${o.fat}</b></td><td>${new Set(rs.map(r=>r.fg)).size}</td><td>${fmtS(Math.max(...rs.map(r=>r.fg)))}</td></tr>`;}).join('')}</tbody></table>`:`<div class="nota">Ningún operador llegó a ${UMBRAL_REINC} eventos de fatiga este mes.</div>`}</div></section>`;
+  const cm = critMod(d);
+  h += `<section class="sheet">${head('REPORTE DETALLADO · MES'+' · CRÍTICAS Y MODERADAS', sub, meta)}${matrizBox(d)}<div class="box"><h3>Alertas críticas y moderadas del mes (${cm.length})</h3>${tablaAlertas(cm,{max:45})}</div></section>`;
+  return h;
+}
+
+/* ================= UI ================= */
+const $ = id => document.getElementById(id);
+function render(){
+  const D = S.data; if (!D) return;
+  const P = S.vista==='pres';
+  let html='';
+  if (S.tipo==='semanal') html = P ? presSemanal(S.fecha) : repSemanal(S.fecha);
+  else if (S.tipo==='mensual') html = P ? presMensual(S.fecha) : repMensual(S.fecha);
+  else if (S.tipo==='operador'){
+    const n = resolverOper(S.oper);
+    html = n ? (P ? presOperador(n, S.desde, S.hasta) : repOperador(n, S.desde, S.hasta)) : `<section class="sheet"><div class="empty">Escribe o elige un operador en el panel (por nombre o por camión).</div></section>`;
+  } else { const f = S.tipo==='dia'?'Día':S.tipo==='noche'?'Noche':null; html = P ? presTurnos(S.fecha, f) : repTurnos(S.fecha, f); }
+  $('out').innerHTML = html;
+  ajustarPres();
+  $('pdfBtn').textContent = P ? 'Descargar PDF (1 hoja)' : 'Descargar PDF detallado';
+  $('expMsg').textContent = P ? 'Hoja única con tarjetas y gráficos, para presentar.' : 'Reporte completo en A4 horizontal, para enviar por correo.';
+  infoFecha();
+}
+function ajustarPres(){
+  ajustarAcciones();
+  document.querySelectorAll('#out .sheet.pres').forEach(sh=>{
+    let w = sh.parentElement.classList.contains('pres-wrap') ? sh.parentElement : null;
+    if (!w){ w = document.createElement('div'); w.className='pres-wrap'; sh.parentNode.insertBefore(w, sh); w.appendChild(sh); }
+    const k = Math.min(1, ($('out').clientWidth - 4) / 1500);
+    sh.style.transform = k<1 ? `scale(${k})` : ''; sh.style.transformOrigin = 'top left';
+    w.style.width = (1500*k)+'px'; w.style.height = (1060*k)+'px';
+  });
+}
+window.addEventListener('resize', ajustarPres);
+function resolverOper(txt){
+  const ops = [...new Set(S.data.recs.map(r=>r.oper))];
+  if (!txt) return null; if (ops.includes(txt)) return txt;
+  const t = norm(txt.split(' · ')[0]);
+  const c = ops.filter(o=>norm(o).includes(t)); if (c.length===1) return c[0];
+  const byEq = Object.entries(S.data.infoOp).filter(([n,i])=>norm(i.e)===t).map(([n])=>n).filter(n=>ops.includes(n));
+  return c[0] || byEq[0] || null;
+}
+function infoFecha(){
+  const D=S.data, f=S.fecha;
+  if (S.tipo==='mensual'){ const m=rangoMes(f); $('fechaInfo').textContent = `Mes de ${m.nombre}: del ${fmtS(m.ini)} al ${fmtY(m.fin)}. Puedes elegir cualquier día del mes.`; }
+  else if (S.tipo==='semanal'){ const i=weekStart(f); $('fechaInfo').textContent = `Semana del ${fmtS(i)} 07:00 al ${fmtY(i+7)} 07:00. Puedes elegir cualquier día de la semana.`; }
+  else $('fechaInfo').textContent = `${fmtY(f)}. Datos del ${fmtS(D.min)} al ${fmtY(D.max)}.`;
+  const gD=D.rol(f,'Día'), gN=D.rol(f,'Noche'), gR='ABC'.replace(gD,'').replace(gN,'');
+  $('rolBox').innerHTML = `<span>Turno día</span><b>${gChip(gD)} Guardia ${gD}</b><span>Turno noche</span><b>${gChip(gN)} Guardia ${gN}</b><span>Descanso</span><b>${gChip(gR)} Guardia ${gR}</b>`;
+}
+function setTipo(t){
+  S.tipo=t; document.querySelectorAll('#tipos button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.t===t));
+  $('pFecha').classList.toggle('hidden', t==='operador'); $('pOper').classList.toggle('hidden', t!=='operador');
+  $('lblFecha').textContent = t==='semanal' ? '3 · Semana (cualquier día)' : t==='mensual' ? '3 · Mes (cualquier día)' : '3 · Fecha de guardia';
+  render();
+}
+function cargarDatos(raw, fuente, nombre){
+  const D = procesar(raw); S.data = D; S.fuente=fuente;
+  S.fecha = D.max; S.desde = D.min; S.hasta = D.max;
+  $('fecha').value = toISO(S.fecha); $('desde').value=toISO(S.desde); $('hasta').value=toISO(S.hasta);
+  const rk = ranking(D.recs);
+  $('opList').innerHTML = rk.map(o=>`<option value="${esc(o.op)}">${esc(o.eq)} · Guardia ${o.g} · ${o.total} alertas</option>`).join('');
+  if (!S.oper || !resolverOper(S.oper)) { S.oper = rk[0]?.op || ''; $('oper').value = S.oper; }
+  const st = $('status');
+  if (fuente==='ejemplo'){ st.className='status sample'; st.textContent='Mostrando datos de ejemplo. Carga tu Excel para ver los reales; se procesa solo en tu navegador.'; }
+  else { st.className='status'; st.innerHTML = `<b>${esc(nombre)}</b><br>${D.recs.length} alertas · ${new Set(D.recs.map(r=>r.oper)).size} operadores · del ${fmt(D.min)} al ${fmt(D.max)}`; }
+  render();
+}
+async function abrirArchivo(file){
+  const st=$('status');
+  try { st.className='status'; st.textContent='Leyendo '+file.name+'…';
+    const buf = await file.arrayBuffer(); cargarDatos(leerLibro(new Uint8Array(buf)), 'archivo', file.name);
+  } catch(e){ st.className='status err'; st.textContent='No pude leer el archivo: '+e.message; }
+}
+$('file').addEventListener('change', e=>{ if(e.target.files[0]) abrirArchivo(e.target.files[0]); });
+const dz=$('drop');
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault(); dz.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault(); dz.classList.remove('over');}));
+dz.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f) abrirArchivo(f); });
+document.querySelectorAll('#tipos button').forEach(b=>b.addEventListener('click',()=>setTipo(b.dataset.t)));
+document.querySelectorAll('#vistas button').forEach(b=>b.addEventListener('click',()=>{ S.vista=b.dataset.v; document.querySelectorAll('#vistas button').forEach(x=>x.setAttribute('aria-pressed', x===b)); render(); }));
+$('fecha').addEventListener('change', e=>{ if(e.target.value){ S.fecha=fromISO(e.target.value); render(); } });
+const paso = d => { if (S.tipo==='mensual'){ const x=dDate(S.fecha); S.fecha=Math.round((Date.UTC(x.getUTCFullYear(), x.getUTCMonth()+d, 1)-EPOCH)/MS); } else S.fecha += (S.tipo==='semanal'?7:1)*d; $('fecha').value=toISO(S.fecha); render(); };
+$('prev').addEventListener('click',()=>paso(-1)); $('next').addEventListener('click',()=>paso(1));
+$('oper').addEventListener('change', e=>{ S.oper=e.target.value; render(); });
+$('oper').addEventListener('keydown', e=>{ if(e.key==='Enter'){ S.oper=e.target.value; render(); } });
+$('desde').addEventListener('change', e=>{ if(e.target.value){ S.desde=fromISO(e.target.value); render(); } });
+$('hasta').addEventListener('change', e=>{ if(e.target.value){ S.hasta=fromISO(e.target.value); render(); } });
+
+/* ================= Exportar ================= */
+let downloads = null;
+(async()=>{ try { downloads = await window.claude?.use?.('downloads'); } catch(e){}  })();
+function nombreArchivo(ext){
+  const t = S.tipo; const f = toISO(S.fecha);
+  const base = t==='mensual' ? `Reporte_Mensual_${toISO(rangoMes(S.fecha).ini).slice(0,7)}` : t==='semanal' ? `Reporte_Semanal_${toISO(weekStart(S.fecha))}` : t==='operador' ? `Reporte_Operador_${(resolverOper(S.oper)||'').replace(/\s+/g,'_')}` : `Reporte_${t==='dia'?'TurnoDia':t==='noche'?'TurnoNoche':'Diario'}_${f}`;
+  return base+(S.vista==='pres'?'_Presentacion':'_Detallado')+'.'+ext;
+}
+async function guardar(filename, data){
+  const m=$('expMsg');
+  if (!downloads){
+    try { const blob = data instanceof Blob ? data : new Blob([data]); const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 4000); m.textContent='Listo: '+filename; }
+    catch(e){ m.textContent='La descarga no está disponible en esta vista.'; }
+    return; }
+  try { await downloads.save({filename, data}); m.textContent='Listo: '+filename; }
+  catch(e){ m.textContent = e && e.code==='declined' ? 'Descarga cancelada.' : 'No se pudo descargar ('+(e.code||e.message||'error')+').'; }
+}
+$('pdfBtn').addEventListener('click', async ()=>{
+  const b=$('pdfBtn'); b.disabled=true; b.textContent='Generando PDF…';
+  try {
+    await document.fonts.ready;
+    const { jsPDF } = window.jspdf; const pdf = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+    window.scrollTo(0,0);
+    const sheets=[...document.querySelectorAll('#out .sheet')];
+    for (let i=0;i<sheets.length;i++){
+      const tf = sheets[i].style.transform; sheets[i].style.transform='';
+      const c = await html2canvas(sheets[i], {scale:2, backgroundColor:'#ffffff', useCORS:true, scrollX:0, scrollY:-window.scrollY, windowWidth:Math.max(1950,document.documentElement.scrollWidth)});
+      sheets[i].style.transform = tf;
+      const M=6, AW=297-2*M, AH=210-2*M, ratio=c.height/c.width;
+      if (i>0) pdf.addPage('a4','landscape');
+      if (ratio <= (AH/AW)*1.6){
+        // la hoja entra completa en una página: se escala para que quepa
+        let w=AW, h=AW*ratio; if (h>AH){ h=AH; w=AH/ratio; }
+        pdf.addImage(c.toDataURL('image/jpeg',0.92),'JPEG',(297-w)/2,M,w,h);
+      } else {
+        // hoja muy larga (tablas): se corta en varias páginas
+        const slicePx=Math.floor(c.width*AH/AW);
+        for (let y=0,k=0; y<c.height; y+=slicePx,k++){
+          const part=document.createElement('canvas'); part.width=c.width; part.height=Math.min(slicePx,c.height-y);
+          part.getContext('2d').drawImage(c,0,y,c.width,part.height,0,0,c.width,part.height);
+          if (k>0) pdf.addPage('a4','landscape');
+          pdf.addImage(part.toDataURL('image/jpeg',0.92),'JPEG',M,M,AW,AW*part.height/part.width);
+        }
+      }
+    }
+    await guardar(nombreArchivo('pdf'), pdf.output('blob'));
+  } catch(e){ $('expMsg').textContent='Error al generar el PDF: '+e.message; }
+  finally { b.disabled=false; b.textContent = S.vista==='pres' ? 'Descargar PDF (1 hoja)' : 'Descargar PDF detallado'; }
+});
+$('htmlBtn').addEventListener('click', ()=>{
+  const css=document.querySelector('style').textContent;
+  const doc=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${nombreArchivo('html')}</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap"><style>${css} body{background:#EEF1F7;padding:20px} .sheet{margin:0 auto 20px} @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;margin:0;page-break-after:always;width:100%;min-height:auto}@page{size:A4 landscape;margin:8mm}}</style></head><body>${$('out').innerHTML.replace(/transform: scale\([^)]*\);?/g,'').replace(/style="width: [^"]*; height: [^"]*;"/g,'')}</body></html>`;
+  guardar(nombreArchivo('html'), doc);
+});
+$('csvBtn').addEventListener('click', ()=>{
+  const D=S.data; let d=D.recs;
+  if (S.tipo==='semanal'){ const i=weekStart(S.fecha); d=d.filter(r=>r.fg>=i&&r.fg<=i+6); }
+  else if (S.tipo==='mensual'){ const m=rangoMes(S.fecha); d=d.filter(r=>r.fg>=m.ini&&r.fg<=m.fin); }
+  else if (S.tipo==='operador'){ const n=resolverOper(S.oper); d=d.filter(r=>r.oper===n&&r.fg>=S.desde&&r.fg<=S.hasta); }
+  else { d=d.filter(r=>r.fg===S.fecha && (S.tipo==='guardia' || r.turno===(S.tipo==='dia'?'Día':'Noche'))); }
+  const H=['Fecha guardia','Fecha','Hora','Turno','Guardia','Equipo','Operador','Tipo de alerta','Nivel','Evento fatiga','Comunicado a','Min a comunicar','Pausa activa','Seguimiento 30 min','Acción adoptada','Observaciones'];
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const lines=[H.join(';'), ...d.map(r=>[fmt(r.fg),fmt(r.f),hhmm(r.m),r.turno,r.g,r.eq,r.oper,r.tipo,r.nivel,r.fat?'Sí':'No',r.com,r.minCom??'',r.pausa,r.seg,r.acc,r.obs].map(q).join(';'))];
+  guardar(nombreArchivo('csv'), '﻿'+lines.join('\r\n'));
+});
+
+/* ================= Inicio ================= */
+try { cargarDatos(SAMPLE, 'ejemplo'); setTipo('guardia'); }
+catch(e){ $('out').innerHTML = '<section class="sheet"><div class="empty">'+esc(e.message)+'</div></section>'; }
+</script>
+</body>
+</html>

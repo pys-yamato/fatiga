@@ -118,7 +118,7 @@ table.t tr.crit td{background:#FCE8E8}
 .sh-head .fcard b{font-family:var(--font-display);font-size:34px;line-height:1;color:#1F3E9C;white-space:nowrap}
 .sh-head .fcard i{font-style:normal;font-size:11.5px;font-weight:700;color:#D64545;letter-spacing:.04em}
 .sh-head .meta .tot{margin-top:2px;color:#18202E}
-.sheet.pres{width:1500px;height:1060px;gap:12px;overflow:hidden;padding:26px 30px}
+.sheet.pres{width:1500px;min-height:1060px;height:auto;gap:12px;overflow:visible;padding:26px 30px}
 .sheet.pres .tcards{grid-template-columns:repeat(10,1fr);gap:6px}
 .sheet.pres .tcard{min-height:62px;padding:6px 8px}.sheet.pres .tcard span{font-size:11px}.sheet.pres .tcard b{font-size:24px}
 .nota-data{font-size:11.5px;color:#7A5200;background:#FFF6DE;border-left:3px solid #F0A04B;padding:5px 10px;border-radius:4px;margin-top:-4px}
@@ -133,7 +133,7 @@ table.t tr.crit td{background:#FCE8E8}
 .acc-g{font-weight:700;color:#1F3E9C;font-size:12.5px;background:#EEF2FB;border-radius:5px;padding:4px 8px;margin-bottom:4px}.prot b.al{font-weight:600;color:#18202E}
 .acc-g .cnt{color:#7A8396;font-weight:400}
 .prot table.t{font-size:10.5px}.prot table.t td{padding:3px 5px}.prot table.t tr.op td{background:#F5F7FC;padding-top:5px;border-top:1px solid #D5DCEC}
-.sheet.pres .box.prot{min-height:0;overflow:hidden}.sheet.pres .acc-cols{flex:1;min-height:0;align-items:stretch}.sheet.pres .acc-col{min-height:0;overflow:hidden}
+.sheet.pres .acc-cols{align-items:start}
 .sheet.pres table.t{font-size:11px}.sheet.pres table.t td{padding:4px 6px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
 .acc-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
@@ -846,18 +846,17 @@ function render(){
   } else { const f = S.tipo==='dia'?'Día':S.tipo==='noche'?'Noche':null; html = P ? presTurnos(S.fecha, f) : repTurnos(S.fecha, f); }
   $('out').innerHTML = html;
   ajustarPres();
-  $('pdfBtn').textContent = P ? 'Descargar PDF (1 hoja)' : 'Descargar PDF detallado';
-  $('expMsg').textContent = P ? 'Hoja única con tarjetas y gráficos, para presentar.' : 'Reporte completo en A4 horizontal, para enviar por correo.';
+  $('pdfBtn').textContent = P ? 'Descargar imagen (PNG)' : 'Descargar PDF detallado';
+  $('expMsg').textContent = P ? 'Imagen con tarjetas, gráficos y todos los protocolos del periodo.' : 'Reporte completo en A4 horizontal, para enviar por correo.';
   infoFecha();
 }
 function ajustarPres(){
-  ajustarAcciones();
   document.querySelectorAll('#out .sheet.pres').forEach(sh=>{
     let w = sh.parentElement.classList.contains('pres-wrap') ? sh.parentElement : null;
     if (!w){ w = document.createElement('div'); w.className='pres-wrap'; sh.parentNode.insertBefore(w, sh); w.appendChild(sh); }
     const k = Math.min(1, ($('out').clientWidth - 4) / 1500);
     sh.style.transform = k<1 ? `scale(${k})` : ''; sh.style.transformOrigin = 'top left';
-    w.style.width = (1500*k)+'px'; w.style.height = (1060*k)+'px';
+    w.style.width = (1500*k)+'px'; w.style.height = (sh.offsetHeight*k)+'px';
   });
 }
 window.addEventListener('resize', ajustarPres);
@@ -936,7 +935,27 @@ async function guardar(filename, data){
   catch(e){ m.textContent = e && e.code==='declined' ? 'Descarga cancelada.' : 'No se pudo descargar ('+(e.code||e.message||'error')+').'; }
 }
 $('pdfBtn').addEventListener('click', async ()=>{
-  const b=$('pdfBtn'); b.disabled=true; b.textContent='Generando PDF…';
+  const b=$('pdfBtn');
+  if (S.vista==='pres'){
+    b.disabled=true; b.textContent='Generando imagen…';
+    try {
+      await document.fonts.ready; window.scrollTo(0,0);
+      const cs=[];
+      for (const sh of document.querySelectorAll('#out .sheet')){
+        const tf = sh.style.transform; sh.style.transform='';
+        cs.push(await html2canvas(sh, {scale:2, backgroundColor:'#ffffff', useCORS:true, scrollX:0, scrollY:-window.scrollY, windowWidth:Math.max(1950,document.documentElement.scrollWidth)}));
+        sh.style.transform = tf;
+      }
+      const W=Math.max(...cs.map(c=>c.width)), H=cs.reduce((a,c)=>a+c.height,0);
+      const out=document.createElement('canvas'); out.width=W; out.height=H; const g=out.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+      let y=0; cs.forEach(c=>{ g.drawImage(c,0,y); y+=c.height; });
+      const blob = await new Promise(r=>out.toBlob(r,'image/png'));
+      await guardar(nombreArchivo('png'), blob);
+    } catch(e){ $('expMsg').textContent='Error al generar la imagen: '+e.message; }
+    finally { b.disabled=false; b.textContent='Descargar imagen (PNG)'; }
+    return;
+  }
+  b.disabled=true; b.textContent='Generando PDF…';
   try {
     await document.fonts.ready;
     const { jsPDF } = window.jspdf; const pdf = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
@@ -965,7 +984,7 @@ $('pdfBtn').addEventListener('click', async ()=>{
     }
     await guardar(nombreArchivo('pdf'), pdf.output('blob'));
   } catch(e){ $('expMsg').textContent='Error al generar el PDF: '+e.message; }
-  finally { b.disabled=false; b.textContent = S.vista==='pres' ? 'Descargar PDF (1 hoja)' : 'Descargar PDF detallado'; }
+  finally { b.disabled=false; b.textContent = S.vista==='pres' ? 'Descargar imagen (PNG)' : 'Descargar PDF detallado'; }
 });
 $('htmlBtn').addEventListener('click', ()=>{
   const css=document.querySelector('style').textContent;
